@@ -1,2 +1,5 @@
 flask>=1.0
 python-dotenv
+cryptography
+redis
+hiredis
