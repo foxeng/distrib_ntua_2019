@@ -1,4 +1,5 @@
 import typing
+import json
 import redis
 from cryptography.hazmat.primitives.asymmetric import rsa, padding
 from cryptography.hazmat.backends import default_backend
@@ -9,9 +10,9 @@ from cryptography.hazmat.primitives import serialization
 
 class PublicKey:
     # TODO OPT: cache key both as an object and serialized to avoid extra conversions
-    def __init__(self, key: rsa.RSAPrivateKeyWithSerialization = None):
-        if key is not None:
-            self._key = key
+    def __init__(self, key: rsa.RSAPublicKeyWithSerialization):
+        self.key_size = key.key_size
+        self._key = key
 
     def verify(self, message: bytes, signature: bytes) -> bool:
         try:
@@ -21,18 +22,33 @@ class PublicKey:
         except InvalidSignature:
             return False
 
-    def dumps(self) -> bytes:
+    def dumpb(self) -> bytes:
         return self._key.public_bytes(
             serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
 
+    def dumpo(self) -> str:
+        return self.dumpb().decode()
+
+    def dumps(self) -> str:
+        return json.dumps(self.dumpo()) # json is not really necessary here
+
     @staticmethod
-    def loads(serkey: bytes) -> 'PublicKey':
-        return PublicKey(key=serialization.load_pem_public_key(serkey, default_backend()))
+    def loadb(b: bytes) -> 'PublicKey':
+        return PublicKey(key=serialization.load_pem_public_key(b, default_backend()))
+
+    @staticmethod
+    def loado(o: str) -> 'PublicKey':
+        return PublicKey.loadb(o.encode())
+
+    @staticmethod
+    def loads(s: str) -> 'PublicKey':
+        return PublicKey.loado(json.loads(s))   # json is not really necessary here
 
 
 class PrivateKey:
     # TODO OPT: cache key both as an object and serialized to avoid extra conversions
-    def __init__(self, key_size: int = 4096, key: rsa.RSAPublicKeyWithSerialization = None):
+    def __init__(self, key_size: int = 4096, key: rsa.RSAPrivateKeyWithSerialization = None):
+        self.key_size = key_size
         if key is not None:
             self._key = key
         else:
@@ -45,14 +61,28 @@ class PrivateKey:
         return self._key.sign(message, padding.PSS(padding.MGF1(SHA256()), padding.PSS.MAX_LENGTH),
                               SHA256())
 
-    def dumps(self) -> bytes:
+    def dumpb(self) -> bytes:
         return self._key.private_bytes(serialization.Encoding.PEM,
                                        serialization.PrivateFormat.PKCS8,
                                        serialization.NoEncryption())
 
+    def dumpo(self) -> str:
+        return self.dumpb().decode()
+
+    def dumps(self) -> str:
+        return json.dumps(self.dumpo())    # json is not really necessary here
+
     @staticmethod
-    def loads(serkey: bytes) -> 'PrivateKey':
-        return PrivateKey(key=serialization.load_pem_private_key(serkey, None, default_backend()))
+    def loadb(b: bytes) -> 'PrivateKey':
+        return PrivateKey(key=serialization.load_pem_private_key(b, None, default_backend()))
+
+    @staticmethod
+    def loado(o: str) -> 'PrivateKey':
+        return PrivateKey.loadb(o.encode())
+
+    @staticmethod
+    def loads(s: str) -> 'PublicKey':
+        return PrivateKey.loado(json.loads(s))  # json is not really necessary here
 
 
 def _get_db():
@@ -60,18 +90,17 @@ def _get_db():
 
 
 def generate_wallet(node_id: int, key_size: int = 4096) -> None:
-    # TODO: Use a different redis database for each class or just separate their keys?
     privkey = PrivateKey(key_size)
     pubkey = privkey.public_key()
     r = _get_db()
     r.set("node_id", node_id)
-    r.set("privkey", privkey.dumps())
-    r.hset("pubkeys", node_id, pubkey.dumps())
+    r.set("privkey", privkey.dumpb())
+    r.hset("pubkeys", node_id, pubkey.dumpb())
 
 
-def sign(message):
+def sign(message: bytes) -> bytes:
     r = _get_db()
-    return PrivateKey.loads(r.get("privkey")).sign(message)
+    return PrivateKey.loadb(r.get("privkey")).sign(message)
 
 
 def get_public_key(node_id: typing.Optional[int] = None) -> PublicKey:
@@ -79,9 +108,9 @@ def get_public_key(node_id: typing.Optional[int] = None) -> PublicKey:
     r = _get_db()
     if node_id is None:
         node_id = r.get("node_id")
-    return PublicKey.loads(r.hget("pubkeys", node_id))
+    return PublicKey.loadb(r.hget("pubkeys", node_id))
 
 
 def set_public_key(node_id: int, key: PublicKey) -> None:
     r = _get_db()
-    r.hset("pubkeys", node_id, key.dumps())
+    r.hset("pubkeys", node_id, key.dumpb())
