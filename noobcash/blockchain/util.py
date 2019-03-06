@@ -16,8 +16,8 @@ def dtob(d: float) -> bytes:
 
 def btoui(b: bytes) -> int:
     """bytes to unsigned int"""
-    return UI.unpack(b)
+    return UI.unpack(b)[0]
 
 def btod(b: bytes) -> float:
     """bytes to double"""
-    return D.unpack(b)
+    return D.unpack(b)[0]

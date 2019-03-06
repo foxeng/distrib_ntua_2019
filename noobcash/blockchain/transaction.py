@@ -12,12 +12,12 @@ from util import uitob, dtob
 
 class TransactionOutput:
     _struct = struct.Struct("!I ")
-    def __init__(self, index: int, recipient: bytes, amount: float):
+    def __init__(self, index: int, recipient: bytes, amount: float) -> None:
         self.index = index
         self.recipient = recipient
         self.amount = amount
 
-    def dumpo(self) -> dict:
+    def dumpo(self) -> typing.Mapping[str, typing.Any]:
         return {
             "index": self.index,
             "recipient": self.recipient.decode(),
@@ -28,7 +28,7 @@ class TransactionOutput:
         return json.dumps(self.dumpo())
 
     @staticmethod
-    def loado(o: dict) -> 'TransactionOutput':
+    def loado(o: typing.Mapping[str, typing.Any]) -> 'TransactionOutput':
         return TransactionOutput(index=o["index"],
                                  recipient=o["recipient"].encode(),
                                  amount=o["amount"])
@@ -44,7 +44,7 @@ class TransactionInput:
         self.transaction_id = transaction_id
         self.prev_out = prev_out
 
-    def dumpo(self) -> dict:
+    def dumpo(self) -> typing.Mapping[str, typing.Any]:
         return {
             "transaction_id": self.transaction_id,
             "index": self.prev_out.index
@@ -54,7 +54,7 @@ class TransactionInput:
         return json.dumps(self.dumpo())
 
     @staticmethod
-    def loado(o: dict) -> 'TransactionInput':
+    def loado(o: typing.Mapping[str, typing.Any]) -> 'TransactionInput':
         # TODO: ask the blockchain for the prev_out
         pass
 
@@ -67,9 +67,9 @@ class Transaction:
     def __init__(self,
                  recipient: bytes,
                  amount: float,
-                 inputs: typing.List[TransactionInput],
+                 inputs: typing.Sequence[TransactionInput],
                  sender: typing.Optional[bytes] = None,
-                 outputs: typing.Optional[typing.List[TransactionOutput]] = None,
+                 outputs: typing.Optional[typing.Sequence[TransactionOutput]] = None,
                  id_: typing.Optional[bytes] = None,
                  signature: typing.Optional[bytes] = None):
         """
@@ -93,7 +93,7 @@ class Transaction:
         if outputs is not None:
             self.outputs = outputs
         else:
-            input_amount = sum(t.amount for t in inputs)
+            input_amount = sum(t.prev_out.amount for t in inputs)
             self.outputs = [
                 TransactionOutput(0, self.recipient, amount),
                 TransactionOutput(1, self.sender, input_amount - amount)
@@ -108,7 +108,7 @@ class Transaction:
             digest.update(dtob(self.amount))
             for i in self.inputs:
                 digest.update(i.transaction_id)
-                digest.update(uitob(i.index))
+                digest.update(uitob(i.prev_out.index))
             for o in self.outputs:
                 digest.update(uitob(o.index))
                 digest.update(o.recipient)
@@ -121,10 +121,10 @@ class Transaction:
             self.signature = wallet.sign(self.id)
 
     def verify(self) -> bool:
-        key = wallet.PublicKey.loads(self.sender)
+        key = wallet.PublicKey.loadb(self.sender)
         return key.verify(self.id, self.signature)
 
-    def dumpo(self) -> dict:
+    def dumpo(self) -> typing.Mapping[str, typing.Any]:
         return {
             "sender": self.sender.decode(),
             "recipient": self.recipient.decode(),
@@ -139,7 +139,7 @@ class Transaction:
         return json.dumps(self.dumpo())
 
     @staticmethod
-    def loado(o: dict) -> 'Transaction':
+    def loado(o: typing.Mapping[str, typing.Any]) -> 'Transaction':
         return Transaction(sender=o["sender"].encode(),
                            recipient=o["recipient"].encode(),
                            amount=o["amount"],

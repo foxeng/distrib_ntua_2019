@@ -10,7 +10,7 @@ from cryptography.hazmat.primitives import serialization
 
 class PublicKey:
     # TODO OPT: cache key both as an object and serialized to avoid extra conversions
-    def __init__(self, key: rsa.RSAPublicKeyWithSerialization):
+    def __init__(self, key: rsa.RSAPublicKeyWithSerialization) -> None:
         self.key_size = key.key_size
         self._key = key
 
@@ -81,7 +81,7 @@ class PrivateKey:
         return PrivateKey.loadb(o.encode())
 
     @staticmethod
-    def loads(s: str) -> 'PublicKey':
+    def loads(s: str) -> 'PrivateKey':
         return PrivateKey.loado(json.loads(s))  # json is not really necessary here
 
 
