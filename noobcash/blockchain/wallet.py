@@ -1,14 +1,15 @@
 import typing
-import json
 import redis
 from cryptography.hazmat.primitives.asymmetric import rsa, padding
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.hashes import SHA256
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import serialization
+import util
 
 
 class PublicKey:
+
     # TODO OPT: cache key both as an object and serialized to avoid extra conversions
     def __init__(self, key: rsa.RSAPublicKeyWithSerialization) -> None:
         self.key_size = key.key_size
@@ -23,31 +24,40 @@ class PublicKey:
             return False
 
     def dumpb(self) -> bytes:
+        """Dump to bytes"""
         return self._key.public_bytes(
             serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
 
     def dumpo(self) -> str:
+        """Dump to JSON-serializable object"""
         return self.dumpb().decode()
 
     def dumps(self) -> str:
-        return json.dumps(self.dumpo()) # json is not really necessary here
+        """Dump to string"""
+        return util.dumps(self.dumpo()) # json is not really necessary here
 
-    @staticmethod
-    def loadb(b: bytes) -> 'PublicKey':
-        return PublicKey(key=serialization.load_pem_public_key(b, default_backend()))
+    @classmethod
+    def loadb(cls, b: bytes) -> 'PublicKey':
+        """Load from bytes"""
+        return cls(key=serialization.load_pem_public_key(b, default_backend()))
 
-    @staticmethod
-    def loado(o: str) -> 'PublicKey':
-        return PublicKey.loadb(o.encode())
+    @classmethod
+    def loado(cls, o: str) -> 'PublicKey':
+        """Load from JSON-serializable object"""
+        return cls.loadb(o.encode())
 
-    @staticmethod
-    def loads(s: str) -> 'PublicKey':
-        return PublicKey.loado(json.loads(s))   # json is not really necessary here
+    @classmethod
+    def loads(cls, s: str) -> 'PublicKey':
+        """Load from string"""
+        return cls.loado(util.loads(s))   # json is not really necessary here
 
 
 class PrivateKey:
+
     # TODO OPT: cache key both as an object and serialized to avoid extra conversions
-    def __init__(self, key_size: int = 4096, key: rsa.RSAPrivateKeyWithSerialization = None):
+    def __init__(self,
+                 key_size: int = 4096,
+                 key: rsa.RSAPrivateKeyWithSerialization = None) -> None:
         self.key_size = key_size
         if key is not None:
             self._key = key
@@ -62,27 +72,33 @@ class PrivateKey:
                               SHA256())
 
     def dumpb(self) -> bytes:
+        """Dump to bytes"""
         return self._key.private_bytes(serialization.Encoding.PEM,
                                        serialization.PrivateFormat.PKCS8,
                                        serialization.NoEncryption())
 
     def dumpo(self) -> str:
+        """Dump to JSON-serializable object"""
         return self.dumpb().decode()
 
     def dumps(self) -> str:
-        return json.dumps(self.dumpo())    # json is not really necessary here
+        """Dump to string"""
+        return util.dumps(self.dumpo())    # json is not really necessary here
 
-    @staticmethod
-    def loadb(b: bytes) -> 'PrivateKey':
-        return PrivateKey(key=serialization.load_pem_private_key(b, None, default_backend()))
+    @classmethod
+    def loadb(cls, b: bytes) -> 'PrivateKey':
+        """Load from bytes"""
+        return cls(key=serialization.load_pem_private_key(b, None, default_backend()))
 
-    @staticmethod
-    def loado(o: str) -> 'PrivateKey':
-        return PrivateKey.loadb(o.encode())
+    @classmethod
+    def loado(cls, o: str) -> 'PrivateKey':
+        """Load from JSON-serializable object"""
+        return cls.loadb(o.encode())
 
-    @staticmethod
-    def loads(s: str) -> 'PrivateKey':
-        return PrivateKey.loado(json.loads(s))  # json is not really necessary here
+    @classmethod
+    def loads(cls, s: str) -> 'PrivateKey':
+        """Load from string"""
+        return cls.loado(util.loads(s))  # json is not really necessary here
 
 
 def _get_db():
