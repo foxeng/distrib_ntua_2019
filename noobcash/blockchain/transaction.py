@@ -17,6 +17,9 @@ class TransactionOutput:
         self.recipient = recipient
         self.amount = amount
 
+    def dumpb(self) -> bytes:
+        return self.dumps().encode()
+
     def dumpo(self) -> typing.Mapping[str, typing.Any]:
         return {
             "index": self.index,
@@ -25,7 +28,13 @@ class TransactionOutput:
         }
 
     def dumps(self) -> str:
+        # NOTE: we can't easily have a proper binary encoding because the keys
+        # (addresses) don't have a fixed size bytes representation
         return json.dumps(self.dumpo())
+
+    @staticmethod
+    def loadb(b: bytes) -> 'TransactionOutput':
+        return TransactionOutput.loads(b.decode())
 
     @staticmethod
     def loado(o: typing.Mapping[str, typing.Any]) -> 'TransactionOutput':
@@ -44,6 +53,10 @@ class TransactionInput:
         self.transaction_id = transaction_id
         self.prev_out = prev_out
 
+    def dumpb(self) -> bytes:
+        # TODO OPT: this could have a proper binary encoding
+        return self.dumps().encode()
+
     def dumpo(self) -> typing.Mapping[str, typing.Any]:
         return {
             "transaction_id": self.transaction_id,
@@ -52,6 +65,10 @@ class TransactionInput:
 
     def dumps(self) -> str:
         return json.dumps(self.dumpo())
+
+    @staticmethod
+    def loadb(b: bytes) -> 'TransactionInput':
+        return TransactionInput.loads(b.decode())
 
     @staticmethod
     def loado(o: typing.Mapping[str, typing.Any]) -> 'TransactionInput':
@@ -124,6 +141,11 @@ class Transaction:
         key = wallet.PublicKey.loadb(self.sender)
         return key.verify(self.id, self.signature)
 
+    def dumpb(self) -> bytes:
+        # NOTE: we can't easily have a proper binary encoding because the keys
+        # (addresses) don't have a fixed size bytes representation
+        return self.dumps().encode()
+
     def dumpo(self) -> typing.Mapping[str, typing.Any]:
         return {
             "sender": self.sender.decode(),
@@ -137,6 +159,10 @@ class Transaction:
 
     def dumps(self) -> str:
         return json.dumps(self.dumpo())
+
+    @staticmethod
+    def loadb(b: bytes) -> 'Transaction':
+        return Transaction.loads(b.decode())
 
     @staticmethod
     def loado(o: typing.Mapping[str, typing.Any]) -> 'Transaction':
