@@ -114,32 +114,28 @@ class PrivateKey:
         return cls.loado(util.loads(s))  # json is not really necessary here
 
 
-def _get_db():
-    return redis.Redis(db=0)
-
-
 def generate_wallet(node_id: int, key_size: int = 4096) -> None:
     privkey = PrivateKey(key_size)
     pubkey = privkey.public_key()
-    r = _get_db()
+    r = redis.Redis()
     r.set("node_id", node_id)
     r.set("privkey", privkey.dumpb())
     r.hset("pubkeys", node_id, pubkey.dumpb())
 
 
 def sign(message: bytes) -> bytes:
-    r = _get_db()
+    r = redis.Redis()
     return PrivateKey.loadb(r.get("privkey")).sign(message)
 
 
 def get_public_key(node_id: typing.Optional[int] = None) -> PublicKey:
     # TODO OPT: Cache keys locally to avoid contacting redis
-    r = _get_db()
+    r = redis.Redis()
     if node_id is None:
         node_id = r.get("node_id")
     return PublicKey.loadb(r.hget("pubkeys", node_id))
 
 
 def set_public_key(node_id: int, key: PublicKey) -> None:
-    r = _get_db()
+    r = redis.Redis()
     r.hset("pubkeys", node_id, key.dumpb())

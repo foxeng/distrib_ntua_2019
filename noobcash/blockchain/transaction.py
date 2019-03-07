@@ -82,7 +82,7 @@ class TransactionInput:
     def loado(cls, o: typing.Mapping[str, typing.Any]) -> 'TransactionInput':
         """Load from JSON-serializable object"""
         # TODO: ask the blockchain for the prev_out
-        pass
+        raise NotImplementedError
 
     @classmethod
     def loads(cls, s: str) -> 'TransactionInput':
@@ -118,7 +118,7 @@ class Transaction:
         if outputs is not None:
             self.outputs = outputs
         else:
-            input_amount = sum(t.prev_out.amount for t in inputs)
+            input_amount = sum(i.prev_out.amount for i in inputs)
             self.outputs = [
                 TransactionOutput(0, self.recipient, amount),
                 TransactionOutput(1, self.sender, input_amount - amount)
@@ -133,7 +133,7 @@ class Transaction:
         return self.id == other.id
 
     def __hash__(self) -> int:
-        return int.from_bytes(self.hash(), byteorder="big")
+        return int.from_bytes(self.id, byteorder="big")
 
     def hash(self) -> bytes:
         # NOTE: this is necessary because:
@@ -154,10 +154,21 @@ class Transaction:
         return h.digest()
 
     def verify(self) -> bool:
+        # TODO OPT: Is there anything else to verify?
+        if not self.inputs:
+            return False
+        if len(self.outputs) != 2:
+            return False
+        input_amount = sum(i.prev_out.amount for i in self.inputs)
+        output_amount = sum(o.amount for o in self.outputs)
+        if input_amount != output_amount:
+            return False
         if self.hash() != self.id:
             return False
         key = wallet.PublicKey.loadb(self.sender)
-        return key.verify(self.id, self.signature)
+        if not key.verify(self.id, self.signature):
+            return False
+        return True
 
     def dumpb(self) -> bytes:
         """Dump to bytes"""
