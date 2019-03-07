@@ -91,7 +91,6 @@ class TransactionInput:
 
 
 class Transaction:
-    # TODO: how is equality defined?
 
     def __init__(self,
                  recipient: bytes,
@@ -126,19 +125,20 @@ class Transaction:
             ]
 
         self.id = self.hash() if id_ is None else id_
+        self.signature = wallet.sign(self.id) if signature is None else signature
 
-        if signature is not None:
-            self.signature = signature
-        else:
-            self.signature = wallet.sign(self.id)
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Transaction):
+            return NotImplemented
+        return self.id == other.id
 
-    def verify(self) -> bool:
-        if self.hash() != self.id:
-            return False
-        key = wallet.PublicKey.loadb(self.sender)
-        return key.verify(self.id, self.signature)
+    def __hash__(self) -> int:
+        return int.from_bytes(self.hash(), byteorder="big")
 
     def hash(self) -> bytes:
+        # NOTE: this is necessary because:
+        # - __hash__() must return an int
+        # - hash() truncates the value returned from __hash__()
         h = hashlib.sha256()
         h.update(self.sender)
         h.update(self.recipient)
@@ -152,6 +152,12 @@ class Transaction:
             h.update(dtob(o.amount))
 
         return h.digest()
+
+    def verify(self) -> bool:
+        if self.hash() != self.id:
+            return False
+        key = wallet.PublicKey.loadb(self.sender)
+        return key.verify(self.id, self.signature)
 
     def dumpb(self) -> bytes:
         """Dump to bytes"""
