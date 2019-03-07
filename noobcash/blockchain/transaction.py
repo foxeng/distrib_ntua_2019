@@ -1,6 +1,5 @@
 import typing
-from cryptography.hazmat.backends import default_backend
-from cryptography.hazmat.primitives.hashes import Hash, SHA256
+import hashlib
 import wallet
 import util
 from util import uitob, dtob
@@ -92,6 +91,7 @@ class TransactionInput:
 
 
 class Transaction:
+    # TODO: how is equality defined?
 
     def __init__(self,
                  recipient: bytes,
@@ -108,10 +108,7 @@ class Transaction:
         determine them from the the rest of the arguments (eg, when creating
         a new transaction).
         """
-        if sender is not None:
-            self.sender = sender
-        else:
-            self.sender = wallet.get_public_key().dumpb()
+        self.sender = wallet.get_public_key().dumpb() if sender is None else sender
         self.recipient = recipient  # TODO OPT: is this necessary?
         self.amount = amount    # TODO OPT: is this necessary?
         self.inputs = inputs
@@ -128,21 +125,7 @@ class Transaction:
                 TransactionOutput(1, self.sender, input_amount - amount)
             ]
 
-        if id_ is not None:
-            self.id = id_
-        else:
-            digest = Hash(SHA256(), default_backend())
-            digest.update(self.sender)
-            digest.update(self.recipient)
-            digest.update(dtob(self.amount))
-            for i in self.inputs:
-                digest.update(i.transaction_id)
-                digest.update(uitob(i.prev_out.index))
-            for o in self.outputs:
-                digest.update(uitob(o.index))
-                digest.update(o.recipient)
-                digest.update(dtob(o.amount))
-            self.id = digest.finalize()
+        self.id = self.hash() if id_ is None else id_
 
         if signature is not None:
             self.signature = signature
@@ -150,8 +133,25 @@ class Transaction:
             self.signature = wallet.sign(self.id)
 
     def verify(self) -> bool:
+        if self.hash() != self.id:
+            return False
         key = wallet.PublicKey.loadb(self.sender)
         return key.verify(self.id, self.signature)
+
+    def hash(self) -> bytes:
+        h = hashlib.sha256()
+        h.update(self.sender)
+        h.update(self.recipient)
+        h.update(dtob(self.amount))
+        for i in self.inputs:
+            h.update(i.transaction_id)
+            h.update(uitob(i.prev_out.index))
+        for o in self.outputs:
+            h.update(uitob(o.index))
+            h.update(o.recipient)
+            h.update(dtob(o.amount))
+
+        return h.digest()
 
     def dumpb(self) -> bytes:
         """Dump to bytes"""

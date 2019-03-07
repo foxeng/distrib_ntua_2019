@@ -1,8 +1,10 @@
 import typing
+import hashlib
 import redis
 from cryptography.hazmat.primitives.asymmetric import rsa, padding
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.hashes import SHA256
+from cryptography.hazmat.primitives.asymmetric.utils import Prehashed
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import serialization
 import util
@@ -16,9 +18,15 @@ class PublicKey:
         self._key = key
 
     def verify(self, message: bytes, signature: bytes) -> bool:
+        # NOTE: we use hashlib instead of cryptography's SHA256 because it's
+        # much faster
+        digest = hashlib.sha256().update(message()).digest()
         try:
-            self._key.verify(signature, message,
-                             padding.PSS(padding.MGF1(SHA256()), padding.PSS.MAX_LENGTH), SHA256())
+            self._key.verify(
+                    signature,
+                    digest,
+                    padding.PSS(padding.MGF1(SHA256()), padding.PSS.MAX_LENGTH),
+                    Prehashed(SHA256()))
             return True
         except InvalidSignature:
             return False
@@ -68,8 +76,13 @@ class PrivateKey:
         return PublicKey(key=self._key.public_key())
 
     def sign(self, message: bytes) -> bytes:
-        return self._key.sign(message, padding.PSS(padding.MGF1(SHA256()), padding.PSS.MAX_LENGTH),
-                              SHA256())
+        # NOTE: we use hashlib instead of cryptography's SHA256 because it's
+        # much faster
+        digest = hashlib.sha256().update(message).digest()
+        return self._key.sign(
+                digest,
+                padding.PSS(padding.MGF1(SHA256()), padding.PSS.MAX_LENGTH),
+                Prehashed(SHA256()))
 
     def dumpb(self) -> bytes:
         """Dump to bytes"""
