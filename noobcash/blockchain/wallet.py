@@ -20,13 +20,13 @@ class PublicKey:
     def verify(self, message: bytes, signature: bytes) -> bool:
         # NOTE: we use hashlib instead of cryptography's SHA256 because it's
         # much faster
-        digest = hashlib.sha256().update(message()).digest()
+        h = hashlib.sha256()
+        h.update(message)
         try:
-            self._key.verify(
-                    signature,
-                    digest,
-                    padding.PSS(padding.MGF1(SHA256()), padding.PSS.MAX_LENGTH),
-                    Prehashed(SHA256()))
+            self._key.verify(signature,
+                             h.digest(),
+                             padding.PSS(padding.MGF1(SHA256()), padding.PSS.MAX_LENGTH),
+                             Prehashed(SHA256()))
             return True
         except InvalidSignature:
             return False
@@ -78,11 +78,11 @@ class PrivateKey:
     def sign(self, message: bytes) -> bytes:
         # NOTE: we use hashlib instead of cryptography's SHA256 because it's
         # much faster
-        digest = hashlib.sha256().update(message).digest()
-        return self._key.sign(
-                digest,
-                padding.PSS(padding.MGF1(SHA256()), padding.PSS.MAX_LENGTH),
-                Prehashed(SHA256()))
+        h = hashlib.sha256()
+        h.update(message)
+        return self._key.sign(h.digest(),
+                              padding.PSS(padding.MGF1(SHA256()), padding.PSS.MAX_LENGTH),
+                              Prehashed(SHA256()))
 
     def dumpb(self) -> bytes:
         """Dump to bytes"""
