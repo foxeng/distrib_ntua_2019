@@ -3,6 +3,7 @@ import hashlib
 import wallet
 import util
 from util import uitob, dtob
+import blockchain
 
 
 # TODO: wallet.PublicKey instead of bytes for sender and recipient?
@@ -54,7 +55,7 @@ class TransactionOutput:
 class TransactionInput:
 
     def __init__(self, transaction_id: bytes, prev_out: TransactionOutput):
-        self.transaction_id = transaction_id
+        self.transaction_id = transaction_id    # the id of the transaction that generated prev_out
         self.prev_out = prev_out
 
     def dumpb(self) -> bytes:
@@ -81,8 +82,10 @@ class TransactionInput:
     @classmethod
     def loado(cls, o: typing.Mapping[str, typing.Any]) -> 'TransactionInput':
         """Load from JSON-serializable object"""
-        # TODO: ask the blockchain for the prev_out
-        raise NotImplementedError
+        # TODO OPT: raise exception if get_utxo() returns none?
+        transaction_id = o["transaction_id"].encode()
+        return TransactionInput(transaction_id,
+                                blockchain.get_utxo(transaction_id, o["index"]))
 
     @classmethod
     def loads(cls, s: str) -> 'TransactionInput':
@@ -103,8 +106,8 @@ class Transaction:
         """
         Create a new transaction to send coins.
 
-        Either specify all of outputs, id_ and signature or none of them to
-        determine them from the the rest of the arguments (eg, when creating
+        Either specify all of sender, outputs, id_ and signature or none of them
+        to determine them from the the rest of the arguments (eg, when creating
         a new transaction).
         """
         self.sender = wallet.get_public_key().dumpb() if sender is None else sender
@@ -154,7 +157,7 @@ class Transaction:
         return h.digest()
 
     def verify(self) -> bool:
-        # TODO OPT: Is there anything else to verify?
+        # TODO: Check that all inputs refer to outputs with the sender as the recipient?
         if not self.inputs:
             return False
         if len(self.outputs) != 2:

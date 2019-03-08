@@ -37,6 +37,7 @@ class Block:
         # NOTE: this will throw if the block hasn't been finalized
         return int.from_bytes(self.current_hash, byteorder="big")   # type: ignore
 
+    # TODO: This probably won't be needed and a Block will only be created when there are enough transactions
     def add_transaction(self, t: Transaction) -> bool:
         if len(self.transactions) >= Block.CAPACITY:
             return False
@@ -49,7 +50,9 @@ class Block:
         Mine the block
 
         Spawns a miner process responsible for mining the block, broadcasting it
-        when it upon success as well as storing it in redis.
+        upon success as well as storing it in redis. The difficulty is passed as
+        the first command line argument and the (partial) block is fed to the
+        standard input, JSON-serialized with dumps().
 
         :returns: the pid of the spawned process
         """

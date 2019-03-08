@@ -1,6 +1,7 @@
 import struct
 import json
 import functools
+import redis
 
 
 # Use these to have a compact and cacheable json representation
@@ -29,3 +30,7 @@ def btoui(b: bytes) -> int:
 def btod(b: bytes) -> float:
     """bytes to double"""
     return D.unpack(b)[0]
+
+
+def get_db(db=0):   # TODO OPT: annotate this (what's the return value of redis.Redis()?)
+    return redis.Redis(db=db)

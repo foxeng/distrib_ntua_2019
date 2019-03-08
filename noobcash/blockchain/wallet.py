@@ -1,6 +1,5 @@
 import typing
 import hashlib
-import redis
 from cryptography.hazmat.primitives.asymmetric import rsa, padding
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.hashes import SHA256
@@ -8,6 +7,12 @@ from cryptography.hazmat.primitives.asymmetric.utils import Prehashed
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import serialization
 import util
+
+
+# Storage
+# - Node id         node_id         int
+# - Private key     wallet:privkey  PrivateKey
+# - Public keys     wallet:pubkeys  map [node_id: int] -> [PublicKey]
 
 
 class PublicKey:
@@ -117,25 +122,25 @@ class PrivateKey:
 def generate_wallet(node_id: int, key_size: int = 4096) -> None:
     privkey = PrivateKey(key_size)
     pubkey = privkey.public_key()
-    r = redis.Redis()
+    r = util.get_db()
     r.set("node_id", node_id)
     r.set("privkey", privkey.dumpb())
     r.hset("pubkeys", node_id, pubkey.dumpb())
 
 
 def sign(message: bytes) -> bytes:
-    r = redis.Redis()
+    r = util.get_db()
     return PrivateKey.loadb(r.get("privkey")).sign(message)
 
 
 def get_public_key(node_id: typing.Optional[int] = None) -> PublicKey:
     # TODO OPT: Cache keys locally to avoid contacting redis
-    r = redis.Redis()
+    r = util.get_db()
     if node_id is None:
         node_id = r.get("node_id")
     return PublicKey.loadb(r.hget("pubkeys", node_id))
 
 
 def set_public_key(node_id: int, key: PublicKey) -> None:
-    r = redis.Redis()
+    r = util.get_db()
     r.hset("pubkeys", node_id, key.dumpb())
