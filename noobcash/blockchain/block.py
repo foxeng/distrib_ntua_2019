@@ -3,9 +3,9 @@ import time
 import hashlib
 import sys
 import subprocess
-from transaction import Transaction
-import util
-from util import uitob
+from .transaction import Transaction
+from . import util
+from .util import uitob
 
 
 class Block:

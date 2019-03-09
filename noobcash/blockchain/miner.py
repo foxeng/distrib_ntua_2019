@@ -1,7 +1,7 @@
 import sys
 import redis
-from block import Block
-from util import uitob
+from .block import Block
+from .util import uitob
 
 
 def _check_difficulty(digest: bytes, difficulty: int) -> bool:

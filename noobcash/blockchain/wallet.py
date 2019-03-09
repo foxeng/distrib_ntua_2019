@@ -6,7 +6,7 @@ from cryptography.hazmat.primitives.hashes import SHA256
 from cryptography.hazmat.primitives.asymmetric.utils import Prehashed
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import serialization
-import util
+from . import util
 
 
 # Storage

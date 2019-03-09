@@ -1,8 +1,8 @@
 import typing
-import wallet
-from block import Block
-from transaction import Transaction, TransactionOutput
-import util
+from . import wallet
+from .block import Block
+from .transaction import Transaction, TransactionOutput
+from . import util
 
 
 # Storage

@@ -1,9 +1,9 @@
 import typing
 import hashlib
-import wallet
-import util
-from util import uitob, dtob
-import blockchain
+from . import wallet
+from . import util
+from . util import uitob, dtob
+from . import blockchain
 
 
 # TODO: wallet.PublicKey instead of bytes for sender and recipient?
