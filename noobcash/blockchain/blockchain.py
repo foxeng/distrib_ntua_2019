@@ -1,6 +1,8 @@
 import typing
+import wallet
 from block import Block
 from transaction import Transaction, TransactionOutput
+import util
 
 
 # Storage
@@ -19,22 +21,31 @@ def get_utxo(transaction_id: bytes, index: int) -> typing.Optional[TransactionOu
     Return TransactionOutput from transaction transaction_id with the specified
     index if it is unspent, else None.
     """
-    # TODO:
-    # - query blockchain:utxo for transaction_id:index
-    raise NotImplementedError
+    r = util.get_db()
+    outb = r.hget("blockchain:utxo", transaction_id + str(index).encode())
+    return TransactionOutput.loadb(outb)
 
 
 def get_block(block_id: typing.Optional[bytes] = None) -> typing.Optional[Block]:
     """If block_id is None, return the last block in the chain"""
-    # TODO: Only look for blocks on the main chain?
-    raise NotImplementedError
+    # TODO OPT: Only look for blocks on the main branch?
+    r = util.get_db()
+    if block_id is None:
+        block_id = r.get("blockchain:last_block")
+    blockb = r.hget("blockchain:blocks", block_id)
+    return Block.loadb(blockb)
 
 
 def get_balance(node_id: typing.Optional[int] = None) -> float:
     """If node_id is None, return current node's balance"""
-    # TODO:
-    # - sum o.amount for o in blockchain:utxo where o.recipient == pubkeys[node_id]
-    raise NotImplementedError
+    key = wallet.get_public_key(node_id).dumpb()
+    r = util.get_db()
+    balance = 0.0
+    for _, outb in r.hscan_iter("blockchain:utxo"):
+        out = TransactionOutput.loadb(outb)
+        if out.recipient == key:
+            balance += out.amount
+    return balance
 
 
 def new_recv_transaction(t: Transaction):   # TODO: Return value

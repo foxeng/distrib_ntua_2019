@@ -16,6 +16,10 @@ class TransactionOutput:
         self.recipient = recipient
         self.amount = amount
 
+    # NOTE: We don't define __eq__() (and __hash__()) because it would require
+    # knowledge of the transaction of origin, which we currently don't store
+    # locally.
+
     def dumpb(self) -> bytes:
         """Dump to bytes"""
         # NOTE: we can't easily have a proper binary encoding because the keys
@@ -56,7 +60,19 @@ class TransactionInput:
 
     def __init__(self, transaction_id: bytes, prev_out: TransactionOutput):
         self.transaction_id = transaction_id    # the id of the transaction that generated prev_out
+        # TODO OPT: Replace this reference with the actual TransactionOutput
+        # attributes (duplicate them) to avoid the search for the
+        # TransactionOutput when deserializiing?
         self.prev_out = prev_out
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, TransactionInput):
+            return False
+        return other.transaction_id == self.transaction_id and \
+               other.prev_out.index == self.prev_out.index
+
+    def __hash__(self) -> int:
+        return int.from_bytes(self.dumpb(), byteorder="big")
 
     def dumpb(self) -> bytes:
         """Dump to bytes"""
@@ -98,7 +114,7 @@ class Transaction:
     def __init__(self,
                  recipient: bytes,
                  amount: float,
-                 inputs: typing.Sequence[TransactionInput],
+                 inputs: typing.Sequence[TransactionInput], # TODO: Determine the inputs for new transactions here or in the blockchain?
                  sender: typing.Optional[bytes] = None,
                  outputs: typing.Optional[typing.Sequence[TransactionOutput]] = None,
                  id_: typing.Optional[bytes] = None,
@@ -157,17 +173,25 @@ class Transaction:
         return h.digest()
 
     def verify(self) -> bool:
-        # TODO: Check that all inputs refer to outputs with the sender as the recipient?
+        # TODO OPT: Need to check anything else?
+        # # of inputs > 0
         if not self.inputs:
             return False
+        # # of outputs == 2
         if len(self.outputs) != 2:
             return False
+        # sender is the recipient of all inputs
+        if not all(i.prev_out.recipient == self.sender for i in self.inputs):
+            return False
+        # sum(inputs) == sum(outputs)
         input_amount = sum(i.prev_out.amount for i in self.inputs)
         output_amount = sum(o.amount for o in self.outputs)
         if input_amount != output_amount:
             return False
+        # hash check
         if self.hash() != self.id:
             return False
+        # signature check
         key = wallet.PublicKey.loadb(self.sender)
         if not key.verify(self.id, self.signature):
             return False

@@ -22,6 +22,14 @@ class PublicKey:
         self.key_size = key.key_size
         self._key = key
 
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, PublicKey):
+            return False
+        return other.dumpb() == self.dumpb()
+
+    def __hash__(self) -> int:
+        return int.from_bytes(self.dumpb(), byteorder="big")
+
     def verify(self, message: bytes, signature: bytes) -> bool:
         # NOTE: we use hashlib instead of cryptography's SHA256 because it's
         # much faster
@@ -76,6 +84,14 @@ class PrivateKey:
             self._key = key
         else:
             self._key = rsa.generate_private_key(65537, key_size, default_backend())
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, PrivateKey):
+            return False
+        return other.dumpb() == self.dumpb()
+
+    def __hash__(self) -> int:
+        return int.from_bytes(self.dumpb(), byteorder="big")
 
     def public_key(self) -> 'PublicKey':
         return PublicKey(key=self._key.public_key())
