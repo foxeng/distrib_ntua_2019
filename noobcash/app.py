@@ -1,7 +1,25 @@
 from noobcash import app
-from noobcash.listener import listener
+import noobcash.listener
+from noobcash.blockchain import wallet, blockchain
+from .instance import config
+import requests # This is different from flask request
+# We suppose that the total number of nodes is known before hands
 
+# Handles the initialisation phase
 if __name__ == '__main__':
+    if (config.IS_NODE_0) == True:
+        print("I am Node 0")
+        wallet.generate_wallet(0)
+        #blockchain.generate_genesis(config.NUMBER_OF_NODES)
+        app.run()
+    else:
+        node_0_url = config.NODE_0_IP_ADDRESS + ":" + config.NODE_0_PORT
+        r = requests.get(node_0_url + "initialiasation", json={"pubWalletId": config.WALLET_ID})
+        nodeId = r.json()["nodeId"]
+        config.nodeId = nodeId
+        print("sad")
+        wallet.generate_wallet(nodeId)
+        app.run()
     # To do start client
     # if node != 0 
     # post an initialization to node 0 
@@ -12,4 +30,3 @@ if __name__ == '__main__':
     # when all the nodes are completed, node 0 
     # sends a INIT_READ GET request to all other nodes, 
     # and then the rest of the nodes can start their client 
-    app.run()
