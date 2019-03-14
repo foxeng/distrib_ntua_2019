@@ -5,28 +5,62 @@ import sys
 import subprocess
 from transaction import Transaction
 import util
-from util import uitob
+from util import uitob, btoui
+
+
+# Storage
+# - CAPACITY        block:capacity      unsigned int
+# - DIFFICULTY      block:difficulty    unsigned int
+
+
+def get_capacity() -> int:
+    r = util.get_db()
+    return btoui(r.get("block:capacity"))
+
+
+def set_capacity(c: int) -> None:
+    r = util.get_db()
+    r.set("block:capacity", uitob(c))
+
+
+def get_difficulty() -> int:
+    r = util.get_db()
+    return btoui(r.get("block:difficulty"))
+
+
+def set_difficulty(d: int) -> None:
+    r = util.get_db()
+    r.set("block:difficulty", uitob(d))
 
 
 class Block:
-    # NOTE: These should be set properly from blockchain (initialize them to an
-    # invalid value here instead?)
-    CAPACITY: int = 5
-    DIFFICULTY: int = 4
 
     def __init__(self,
                  index: int,
                  previous_hash: bytes,
+                 transactions: typing.List[Transaction],
                  timestamp: typing.Optional[int] = None,
-                 transactions: typing.Optional[typing.List[Transaction]] = None,   # TODO: Or specify them using add_transaction() only?
                  nonce: typing.Optional[int] = None,
                  current_hash: typing.Optional[bytes] = None) -> None:
-        self.index = index
+        if not (isinstance(previous_hash, bytes) and \
+                isinstance(transactions, list) and \
+                all(isinstance(t, Transaction) for t in transactions)):
+            raise TypeError
+        self.index = int(index)
         self.previous_hash = previous_hash
-        self.timestamp = int(time.time()) if timestamp is None else timestamp
-        self.transactions = [] if transactions is None else transactions
-        self.nonce = nonce
-        self.current_hash = current_hash
+        self.transactions = transactions
+
+        if timestamp is None and nonce is None and current_hash is None:
+            self.timestamp = int(time.time())
+            # NOTE: It's good practice to initialize all attributes in the constructor
+            self.nonce = None
+            self.current_hash = None
+        else:
+            if not isinstance(current_hash, bytes):
+                raise TypeError
+            self.timestamp = int(timestamp) # type: ignore
+            self.nonce = int(nonce) # type: ignore
+            self.current_hash = current_hash
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, Block):
@@ -34,18 +68,20 @@ class Block:
         return self.current_hash == other.current_hash
 
     def __hash__(self) -> int:
-        # NOTE: this will throw if the block hasn't been finalized
+        # NOTE: this will raise an exception if the block hasn't been finalized (mined)
         return int.from_bytes(self.current_hash, byteorder="big")   # type: ignore
 
-    # TODO: This probably won't be needed and a Block will only be created when there are enough transactions
-    def add_transaction(self, t: Transaction) -> bool:
-        if len(self.transactions) >= Block.CAPACITY:
-            return False
-        # TODO: Check that there is no inter-dependence? (to facilitate the new block use-case)
-        self.transactions.append(t)
-        return True
+    @staticmethod
+    def genesis() -> 'Block':
+        g = Block(index=0,
+                  previous_hash=(1).to_bytes(256 // 8, byteorder="big"),
+                  transactions=[Transaction.genesis()])
+        g.nonce = 0
+        g.current_hash = g.hash()
+        return g
 
     def finalize(self) -> int:
+        # TODO: Move this to the constructor?
         """
         Mine the block
 
@@ -57,7 +93,7 @@ class Block:
         :returns: the pid of the spawned process
         """
         python = sys.executable if sys.executable else 'python3'
-        p = subprocess.Popen(args=[python, 'miner.py', str(Block.DIFFICULTY)],
+        p = subprocess.Popen(args=[python, 'miner.py', str(get_difficulty())],
                              stdin=subprocess.PIPE,
                              stdout=subprocess.DEVNULL,
                              stderr=subprocess.DEVNULL)
@@ -77,26 +113,53 @@ class Block:
 
     def hash(self) -> bytes:
         h = self._partial_hash()
-        # NOTE: this will throw if the block hasn't been finalized
+        # NOTE: this will raise an exception if the block hasn't been finalized (mined)
         h.update(uitob(self.nonce)) # type: ignore
         # TODO OPT: self.current_hash = digest?
         return h.digest()
 
     def _check_difficulty(self) -> bool:
-        target = (1 << (256 - Block.DIFFICULTY)) - 1
-        # NOTE: this will throw if the block hasn't been finalized
+        target = (1 << (256 - get_difficulty())) - 1
+        # NOTE: this will raise an exception if the block hasn't been finalized (mined)
         return self.current_hash <= target.to_bytes(256 // 8, byteorder="big")  # type: ignore
+
+    def is_genesis(self) -> bool:
+        if self.index != 0:
+            return False
+        if self.previous_hash != (1).to_bytes(256 // 8, byteorder="big"):
+            return False
+        if len(self.transactions) != 1:
+            return False
+        if not self.transactions[0].is_genesis():
+            return False
+        if self.nonce != 0:
+            return False
+        if self.current_hash != self.hash():
+            return False
+
+        return True
 
     def verify(self) -> bool:
         # TODO OPT: Is there anything else to verify?
-        if len(self.transactions) != Block.CAPACITY:
+        if self.is_genesis():
+            return True
+        # CAPACITY > 0
+        capacity = get_capacity()
+        if capacity <= 0:
             return False
+        # # of transactions == CAPACITY
+        if len(self.transactions) != capacity:
+            return False
+        # all transactions are verified
         if not all(t.verify() for t in self.transactions):
             return False
-        if self.hash() != self.current_hash:
+        # hash check
+        if self.current_hash != self.hash():
             return False
+        # difficulty check
         if not self._check_difficulty():
             return False
+
         return True
 
     def dumpb(self) -> bytes:
@@ -113,7 +176,7 @@ class Block:
             "timestamp": self.timestamp,
             "transactions": [t.dumpo() for t in self.transactions],
             "nonce": self.nonce,
-            # NOTE: this will throw if the block hasn't been finalized
+            # NOTE: this will raise an exception if the block hasn't been finalized (mined)
             "current_hash": self.current_hash.decode()  # type: ignore
         }
 
