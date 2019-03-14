@@ -5,8 +5,9 @@ import redis
 
 
 # Storage
-# - Node id         util:node_id         unsigned int
-# - Nodes           util:nodes           unsigned int
+# - Node id             util:node_id            unsigned int
+# - Total nodes         util:total_node         unsigned int
+# - Registered nodes    util:registered_nodes
 
 
 # Use these to have a compact and cacheable json representation
@@ -69,3 +70,9 @@ def get_nodes() -> int:
 def set_nodes(nodes: int) -> None:
     r = get_db()
     r.set("util:nodes", uitob(nodes))
+
+get_registered_nodes = functools.partial(incr_registered_nodes, inc=0)
+
+def incr_registered_nodes(inc: int = 1) -> int:
+    r = get_db()
+    return r.incr("util:registered_nodes", inc)
