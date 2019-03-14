@@ -143,13 +143,13 @@ def generate_wallet(node_id: int, key_size: int = 4096) -> None:
     pubkey = privkey.public_key()
     r = util.get_db()
     util.set_node_id(node_id)
-    r.set("privkey", privkey.dumpb())
-    r.hset("pubkeys", node_id, pubkey.dumpb())
+    r.set("wallet:privkey", privkey.dumpb())
+    r.hset("wallet:pubkeys", node_id, pubkey.dumpb())
 
 
 def sign(message: bytes) -> bytes:
     r = util.get_db()
-    return PrivateKey.loadb(r.get("privkey")).sign(message)
+    return PrivateKey.loadb(r.get("wallet:privkey")).sign(message)
 
 
 def get_public_key(node_id: typing.Optional[int] = None) -> PublicKey:
@@ -157,9 +157,9 @@ def get_public_key(node_id: typing.Optional[int] = None) -> PublicKey:
     r = util.get_db()
     if node_id is None:
         node_id = util.get_node_id()
-    return PublicKey.loadb(r.hget("pubkeys", node_id))
+    return PublicKey.loadb(r.hget("wallet:pubkeys", node_id))
 
 
 def set_public_key(node_id: int, key: PublicKey) -> None:
     r = util.get_db()
-    r.hset("pubkeys", node_id, key.dumpb())
+    r.hset("wallet:pubkeys", node_id, key.dumpb())

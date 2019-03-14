@@ -1,3 +1,4 @@
+import typing
 import struct
 import json
 import functools
@@ -9,6 +10,7 @@ import redis
 # - Node id             util:node_id            unsigned int
 # - Total nodes         util:total_node         unsigned int
 # - Registered nodes    util:registered_nodes   int
+# - Node URLs           util:node_urls          map [node_id: int] -> []
 
 
 # Use these to have a compact and cacheable json representation
@@ -53,16 +55,6 @@ def get_db(db=0):   # TODO OPT: annotate this (what's the return value of redis.
     return redis.Redis(db=db)
 
 
-def get_ip():   # TODO: Argument(s) and return value(s)
-    # TODO
-    raise NotImplementedError
-
-
-def set_ip():   # TODO: Argument(s) and return value(s)
-    # TODO
-    raise NotImplementedError
-
-
 def get_node_id() -> int:
     r = get_db()
     return btoui(r.get("util:node_id"))
@@ -89,3 +81,13 @@ def incr_registered_nodes(inc: int = 1) -> int:
 
 
 get_registered_nodes = functools.partial(incr_registered_nodes, inc=0)
+
+
+def get_ip(node_id: int) -> typing.Mapping[str, str]:   # TODO OPT: This can support multiple IDs
+    r = get_db()
+    return loads(r.hget("util:node_urls", node_id).decode())
+
+
+def set_ip(ips: typing.Mapping[int, typing.Mapping[str, str]]) -> None:
+    r = get_db()
+    r.hmset("util:node_urls", {node_id: dumps(url).encode() for node_id, url in ips.items()})
