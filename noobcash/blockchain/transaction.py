@@ -1,7 +1,7 @@
 import typing
 import hashlib
 from noobcash.blockchain import util, wallet
-from noobcash.blockchain.util import uitob, dtob, stob, btos
+from noobcash.blockchain.util import uitob, dtob, stobin, bintos
 
 
 class TransactionOutput:
@@ -24,13 +24,13 @@ class TransactionOutput:
         """Dump to bytes"""
         # NOTE: we can't easily have a proper binary encoding because the keys
         # (addresses) don't have a fixed size bytes representation
-        return stob(self.dumps())
+        return self.dumps().encode()
 
     def dumpo(self) -> typing.Mapping[str, typing.Any]:
         """Dump to JSON-serializable object"""
         return {
             "index": self.index,
-            "recipient": btos(self.recipient),
+            "recipient": bintos(self.recipient),
             "amount": self.amount
         }
 
@@ -41,13 +41,13 @@ class TransactionOutput:
     @classmethod
     def loadb(cls, b: bytes) -> 'TransactionOutput':
         """Load from bytes"""
-        return cls.loads(btos(b))
+        return cls.loads(b.decode())
 
     @classmethod
     def loado(cls, o: typing.Mapping[str, typing.Any]) -> 'TransactionOutput':
         """Load from JSON-serializable object"""
         return cls(index=o["index"],
-                   recipient=stob(o["recipient"]),
+                   recipient=stobin(o["recipient"]),
                    amount=o["amount"])
 
     @classmethod
@@ -79,12 +79,12 @@ class TransactionInput:
     def dumpb(self) -> bytes:
         """Dump to bytes"""
         # TODO OPT: this could have a proper binary encoding
-        return stob(self.dumps())
+        return self.dumps().encode()
 
     def dumpo(self) -> typing.Mapping[str, typing.Any]:
         """Dump to JSON-serializable object"""
         return {
-            "transaction_id": self.transaction_id,
+            "transaction_id": bintos(self.transaction_id),
             "index": self.index
         }
 
@@ -95,12 +95,12 @@ class TransactionInput:
     @classmethod
     def loadb(cls, b: bytes) -> 'TransactionInput':
         """Load from bytes"""
-        return cls.loads(btos(b))
+        return cls.loads(b.decode())
 
     @classmethod
     def loado(cls, o: typing.Mapping[str, typing.Any]) -> 'TransactionInput':
         """Load from JSON-serializable object"""
-        return TransactionInput(stob(o["transaction_id"]),
+        return TransactionInput(stobin(o["transaction_id"]),
                                 o["index"])
 
     @classmethod
@@ -246,7 +246,7 @@ class Transaction:
         if not all(o.index == i for i, o in enumerate(self.outputs)):
             return False
         # all amounts >= 0
-        if not (self.amount < 0 and all(o.amount >= 0 for o in self.outputs)):
+        if not (self.amount >= 0 and all(o.amount >= 0 for o in self.outputs)):
             return False
         # amount = outputs[0].amount
         if self.amount != self.outputs[0].amount:
@@ -265,18 +265,18 @@ class Transaction:
         """Dump to bytes"""
         # NOTE: we can't easily have a proper binary encoding because the keys
         # (addresses) don't have a fixed size bytes representation
-        return stob(self.dumps())
+        return self.dumps().encode()
 
     def dumpo(self) -> typing.Mapping[str, typing.Any]:
         """Dump to JSON-serializable object"""
         return {
-            "sender": btos(self.sender),
-            "recipient": btos(self.recipient),
+            "sender": bintos(self.sender),
+            "recipient": bintos(self.recipient),
             "amount": self.amount,
             "inputs": [i.dumpo() for i in self.inputs],
             "outputs": [o.dumpo() for o in self.outputs],
-            "id": btos(self.id),
-            "signature": btos(self.signature)
+            "id": bintos(self.id),
+            "signature": bintos(self.signature)
         }
 
     def dumps(self) -> str:
@@ -286,18 +286,18 @@ class Transaction:
     @classmethod
     def loadb(cls, b: bytes) -> 'Transaction':
         """Load from bytes"""
-        return cls.loads(btos(b))
+        return cls.loads(b.decode())
 
     @classmethod
     def loado(cls, o: typing.Mapping[str, typing.Any]) -> 'Transaction':
         """Load from JSON-serializable object"""
-        return cls(sender=stob(o["sender"]),
-                   recipient=stob(o["recipient"]),
+        return cls(sender=stobin(o["sender"]),
+                   recipient=stobin(o["recipient"]),
                    amount=o["amount"],
                    inputs=[TransactionInput.loado(i) for i in o["inputs"]],
                    outputs=[TransactionOutput.loado(out) for out in o["outputs"]],
-                   id_=stob(o["id"]),
-                   signature=stob(o["signature"]))
+                   id_=stobin(o["id"]),
+                   signature=stobin(o["signature"]))
 
     @classmethod
     def loads(cls, s: str) -> 'Transaction':

@@ -1,6 +1,6 @@
 from noobcash.blockchain import wallet, util
 from noobcash.blockchain.wallet import PrivateKey, PublicKey
-from noobcash.blockchain.transaction import Transaction
+from noobcash.blockchain.transaction import Transaction, TransactionInput
 from noobcash.blockchain.block import Block
 
 
@@ -47,7 +47,7 @@ def test_transaction():
     assert Transaction.loadb(gt.dumpb()) == gt
     assert Transaction.loads(gt.dumps()) == gt
 
-    recipient2 = wallet.get_public_key(NODE_IDS[2])
+    recipient2 = wallet.get_public_key(NODE_IDS[2]).dumpb()
     t = Transaction(recipient=recipient2,
                     amount=12.5,
                     inputs=[

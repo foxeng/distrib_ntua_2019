@@ -1,6 +1,7 @@
 import struct
 import json
 import functools
+from base64 import b64encode, b64decode
 import redis
 
 
@@ -38,14 +39,14 @@ def btod(b: bytes) -> float:
     return D.unpack(b)[0]
 
 
-def stob(s: str) -> bytes:
-    """String to bytes. ONLY WORKS FOR STRINGS RETURNED BY btos"""
-    return bytes.fromhex(s)
+def stobin(s: str) -> bytes:
+    """String to binary data"""
+    return b64decode(s.encode())
 
 
-def btos(b: bytes) -> str:
-    """Bytes to string"""
-    return b.hex()
+def bintos(b: bytes) -> str:
+    """Binary data to string"""
+    return b64encode(b).decode()
 
 
 def get_db(db=0):   # TODO OPT: annotate this (what's the return value of redis.Redis()?)

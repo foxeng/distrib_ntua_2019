@@ -5,7 +5,7 @@ import sys
 import subprocess
 from noobcash.blockchain.transaction import Transaction
 from noobcash.blockchain import util
-from noobcash.blockchain.util import uitob, btoui, stob, btos
+from noobcash.blockchain.util import uitob, btoui, stobin, bintos
 
 
 # Storage
@@ -166,18 +166,18 @@ class Block:
         """Dump to bytes"""
         # NOTE: we can't easily have a proper binary encoding because
         # transactions don't have a fixed size bytes representation
-        return stob(self.dumps())
+        return self.dumps().encode()
 
     def dumpo(self) -> typing.Mapping[str, typing.Any]:
         """Dump to JSON-serializable object"""
         return {
             "index": self.index,
-            "previous_hash": btos(self.previous_hash),
+            "previous_hash": bintos(self.previous_hash),
             "timestamp": self.timestamp,
             "transactions": [t.dumpo() for t in self.transactions],
             "nonce": self.nonce,
             # NOTE: this will raise an exception if the block hasn't been finalized (mined)
-            "current_hash": btos(self.current_hash)  # type: ignore
+            "current_hash": bintos(self.current_hash)  # type: ignore
         }
 
     def dumps(self) -> str:
@@ -187,17 +187,17 @@ class Block:
     @classmethod
     def loadb(cls, b: bytes) -> 'Block':
         """Load from bytes"""
-        return cls.loads(btos(b))
+        return cls.loads(b.decode())
 
     @classmethod
     def loado(cls, o: typing.Mapping[str, typing.Any]) -> 'Block':
         """Load from JSON-serializable object"""
         return cls(index=o["index"],
-                   previous_hash=stob(o["previous_hash"]),
+                   previous_hash=stobin(o["previous_hash"]),
                    timestamp=o["timestamp"],
                    transactions=[Transaction.loado(t) for t in o["transactions"]],
                    nonce=o["nonce"],
-                   current_hash=stob(o["current_hash"]))
+                   current_hash=stobin(o["current_hash"]))
 
     @classmethod
     def loads(cls, s: str) -> 'Block':
