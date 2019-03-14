@@ -6,11 +6,10 @@ from cryptography.hazmat.primitives.hashes import SHA256
 from cryptography.hazmat.primitives.asymmetric.utils import Prehashed
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import serialization
-from . import util
+from noobcash.blockchain import util
 
 
 # Storage
-# - Node id         node_id         int
 # - Private key     wallet:privkey  PrivateKey
 # - Public keys     wallet:pubkeys  map [node_id: int] -> [PublicKey]
 
@@ -19,7 +18,8 @@ class PublicKey:
 
     # TODO OPT: cache key both as an object and serialized to avoid extra conversions
     def __init__(self, key: rsa.RSAPublicKeyWithSerialization) -> None:
-        self.key_size = key.key_size
+        if not isinstance(key, rsa.RSAPublicKeyWithSerialization):
+            raise TypeError
         self._key = key
 
     def __eq__(self, other: object) -> bool:
@@ -79,11 +79,12 @@ class PrivateKey:
     def __init__(self,
                  key_size: int = 4096,
                  key: rsa.RSAPrivateKeyWithSerialization = None) -> None:
-        self.key_size = key_size
-        if key is not None:
-            self._key = key
-        else:
+        if key is None:
             self._key = rsa.generate_private_key(65537, key_size, default_backend())
+        else:
+            if not isinstance(key, rsa.RSAPrivateKeyWithSerialization):
+                raise TypeError
+            self._key = key
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, PrivateKey):
@@ -139,7 +140,7 @@ def generate_wallet(node_id: int, key_size: int = 4096) -> None:
     privkey = PrivateKey(key_size)
     pubkey = privkey.public_key()
     r = util.get_db()
-    r.set("node_id", node_id)
+    util.set_node_id(node_id)
     r.set("privkey", privkey.dumpb())
     r.hset("pubkeys", node_id, pubkey.dumpb())
 
@@ -153,7 +154,7 @@ def get_public_key(node_id: typing.Optional[int] = None) -> PublicKey:
     # TODO OPT: Cache keys locally to avoid contacting redis
     r = util.get_db()
     if node_id is None:
-        node_id = r.get("node_id")
+        node_id = util.get_node_id()
     return PublicKey.loadb(r.hget("pubkeys", node_id))
 
 

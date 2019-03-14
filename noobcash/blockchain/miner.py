@@ -1,7 +1,10 @@
 import sys
-import redis
 from .block import Block
 from .util import uitob
+
+
+# TODO: Is killing this process while mining ok (see redis)? Do we need to implement a SIGTERM
+# handler to terminate gracefully?
 
 
 def _check_difficulty(digest: bytes, difficulty: int) -> bool:
@@ -26,8 +29,8 @@ if __name__ == "__main__":
             block.nonce = nonce
             block.current_hash = digest
             # TODO: Broadcast the block
-            # TODO: Write block to redis (what if we are terminated while doing this? does it matter?)
-            r = redis.Redis()
+
+            # TODO: Store the new block. Or send the block to ourself as well?
             break
         else:
             nonce += 1
