@@ -196,7 +196,7 @@ def new_recv_block(recv_block: Block) -> bool:
     # OK 2  Reject if duplicate of block we have in any of the three categories
     r = util.get_db()
     if r.hexists("blockchain:blocks", recv_block.current_hash) or \
-       r.sismember("blockchain:orphan_blocks:" + recv_block.previous_hash.decode(),
+       r.sismember("blockchain:orphan_blocks:".encode() + recv_block.previous_hash,
                    recv_block.dumpb()):
         return False
 
@@ -218,7 +218,7 @@ def new_recv_block(recv_block: Block) -> bool:
     #       prev chain; done with block
     prev_blockb = r.hget("blockchain:blocks", recv_block.previous_hash)
     if prev_blockb is None:
-        r.sadd("blockchain:orphan_blocks:" + recv_block.previous_hash.decode(), recv_block.dumpb())
+        r.sadd("blockchain:orphan_blocks:".encode() + recv_block.previous_hash, recv_block.dumpb())
         # TODO: Request b.previous_hash (from everyone or from the one we got this from?)
         return False
 

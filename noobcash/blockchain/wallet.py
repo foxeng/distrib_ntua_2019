@@ -7,6 +7,7 @@ from cryptography.hazmat.primitives.asymmetric.utils import Prehashed
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import serialization
 from noobcash.blockchain import util
+from noobcash.blockchain.util import stob, btos
 
 
 # Storage
@@ -51,7 +52,7 @@ class PublicKey:
 
     def dumpo(self) -> str:
         """Dump to JSON-serializable object"""
-        return self.dumpb().decode()
+        return btos(self.dumpb())
 
     def dumps(self) -> str:
         """Dump to string"""
@@ -65,7 +66,7 @@ class PublicKey:
     @classmethod
     def loado(cls, o: str) -> 'PublicKey':
         """Load from JSON-serializable object"""
-        return cls.loadb(o.encode())
+        return cls.loadb(stob(o))
 
     @classmethod
     def loads(cls, s: str) -> 'PublicKey':
@@ -114,7 +115,7 @@ class PrivateKey:
 
     def dumpo(self) -> str:
         """Dump to JSON-serializable object"""
-        return self.dumpb().decode()
+        return btos(self.dumpb())
 
     def dumps(self) -> str:
         """Dump to string"""
@@ -128,7 +129,7 @@ class PrivateKey:
     @classmethod
     def loado(cls, o: str) -> 'PrivateKey':
         """Load from JSON-serializable object"""
-        return cls.loadb(o.encode())
+        return cls.loadb(stob(o))
 
     @classmethod
     def loads(cls, s: str) -> 'PrivateKey':

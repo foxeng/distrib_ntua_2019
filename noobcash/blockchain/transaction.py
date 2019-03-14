@@ -1,7 +1,7 @@
 import typing
 import hashlib
 from noobcash.blockchain import util, wallet
-from noobcash.blockchain.util import uitob, dtob
+from noobcash.blockchain.util import uitob, dtob, stob, btos
 
 
 class TransactionOutput:
@@ -24,13 +24,13 @@ class TransactionOutput:
         """Dump to bytes"""
         # NOTE: we can't easily have a proper binary encoding because the keys
         # (addresses) don't have a fixed size bytes representation
-        return self.dumps().encode()
+        return stob(self.dumps())
 
     def dumpo(self) -> typing.Mapping[str, typing.Any]:
         """Dump to JSON-serializable object"""
         return {
             "index": self.index,
-            "recipient": self.recipient.decode(),
+            "recipient": btos(self.recipient),
             "amount": self.amount
         }
 
@@ -41,13 +41,13 @@ class TransactionOutput:
     @classmethod
     def loadb(cls, b: bytes) -> 'TransactionOutput':
         """Load from bytes"""
-        return cls.loads(b.decode())
+        return cls.loads(btos(b))
 
     @classmethod
     def loado(cls, o: typing.Mapping[str, typing.Any]) -> 'TransactionOutput':
         """Load from JSON-serializable object"""
         return cls(index=o["index"],
-                   recipient=o["recipient"].encode(),
+                   recipient=stob(o["recipient"]),
                    amount=o["amount"])
 
     @classmethod
@@ -79,7 +79,7 @@ class TransactionInput:
     def dumpb(self) -> bytes:
         """Dump to bytes"""
         # TODO OPT: this could have a proper binary encoding
-        return self.dumps().encode()
+        return stob(self.dumps())
 
     def dumpo(self) -> typing.Mapping[str, typing.Any]:
         """Dump to JSON-serializable object"""
@@ -95,12 +95,12 @@ class TransactionInput:
     @classmethod
     def loadb(cls, b: bytes) -> 'TransactionInput':
         """Load from bytes"""
-        return cls.loads(b.decode())
+        return cls.loads(btos(b))
 
     @classmethod
     def loado(cls, o: typing.Mapping[str, typing.Any]) -> 'TransactionInput':
         """Load from JSON-serializable object"""
-        return TransactionInput(o["transaction_id"].encode(),
+        return TransactionInput(stob(o["transaction_id"]),
                                 o["index"])
 
     @classmethod
@@ -265,18 +265,18 @@ class Transaction:
         """Dump to bytes"""
         # NOTE: we can't easily have a proper binary encoding because the keys
         # (addresses) don't have a fixed size bytes representation
-        return self.dumps().encode()
+        return stob(self.dumps())
 
     def dumpo(self) -> typing.Mapping[str, typing.Any]:
         """Dump to JSON-serializable object"""
         return {
-            "sender": self.sender.decode(),
-            "recipient": self.recipient.decode(),
+            "sender": btos(self.sender),
+            "recipient": btos(self.recipient),
             "amount": self.amount,
             "inputs": [i.dumpo() for i in self.inputs],
             "outputs": [o.dumpo() for o in self.outputs],
-            "id": self.id.decode(),
-            "signature": self.signature.decode()
+            "id": btos(self.id),
+            "signature": btos(self.signature)
         }
 
     def dumps(self) -> str:
@@ -286,18 +286,18 @@ class Transaction:
     @classmethod
     def loadb(cls, b: bytes) -> 'Transaction':
         """Load from bytes"""
-        return cls.loads(b.decode())
+        return cls.loads(btos(b))
 
     @classmethod
     def loado(cls, o: typing.Mapping[str, typing.Any]) -> 'Transaction':
         """Load from JSON-serializable object"""
-        return cls(sender=o["sender"].encode(),
-                   recipient=o["recipient"].encode(),
+        return cls(sender=stob(o["sender"]),
+                   recipient=stob(o["recipient"]),
                    amount=o["amount"],
                    inputs=[TransactionInput.loado(i) for i in o["inputs"]],
                    outputs=[TransactionOutput.loado(out) for out in o["outputs"]],
-                   id_=o["id"].encode(),
-                   signature=o["signature"].encode())
+                   id_=stob(o["id"]),
+                   signature=stob(o["signature"]))
 
     @classmethod
     def loads(cls, s: str) -> 'Transaction':
