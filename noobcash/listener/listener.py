@@ -1,5 +1,6 @@
 from flask import Flask, request, Response, abort
 import json
+from noobcash.blockchain import util
 from . import blockchainApi
 from .. instance import config
 from noobcash import app
@@ -67,20 +68,18 @@ def lstInitialisation():
         port = request.environ['REMOTE_PORT']
         entryValue = {"ipAddr": ipAddr, "port" : port, "pubWalletId" : walletId}
         entry = {newNodeId : entryValue}
-        #blockchain.setIp(entry)
-        #config.routingTable.update(entry)
-        if config.nodeIdCounter == config.NUMBER_OF_NODES:
+        util.set_ip(entry)
+        if config.nodeIdCounter == util.get_nodes():
             def threadFn():
                 sleep(0.1) #wait a bit to make sure that the listener is started
                 routingTable = {}
-                for i in range(0, config.NUMBER_OF_NODES):
-                    #ipEntry = blockchain.getIp(i)
-                    #routingTable.update(ipEntry)
-                    print("")
+                for i in range(0, util.get_nodes()):
+                    ipEntry = util.get_ip(i)
+                    routingTable.update(ipEntry)
                 for i in range(1, config.NUMBER_OF_NODES):
-                    #ipEntry = blockchain.getIp(i)
-                    #url = ipEntry["ipAddress"] + ":" + ipEntry["port"]
-                    #r = requests.post(url, json= {"routingTable" : routingTable})  
+                    ipEntry = util.get_ip(i)
+                    url = ipEntry["ipAddress"] + ":" + ipEntry["port"]
+                    r = requests.post(url, json= {"routingTable" : routingTable})  
                     print("")
                 return 
                 
@@ -91,7 +90,5 @@ def lstInitialisation():
     else:
         routingTable = request.get_json()["routingTable"]
         for key, value in routingTable:
-            print(key)
-            print(value)
-            #blockchain.setIp({key: value})
+            util.set_ip({key: value})
         return response
