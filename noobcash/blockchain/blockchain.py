@@ -1,11 +1,9 @@
 import typing
 import os
 import signal
-import wallet
-import block
-from block import Block
-from transaction import Transaction, TransactionInput, TransactionOutput
-import util
+from noobcash.blockchain import wallet, block, util
+from noobcash.blockchain.block import Block
+from noobcash.blockchain.transaction import Transaction, TransactionInput, TransactionOutput
 
 
 # Storage

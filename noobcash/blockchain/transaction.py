@@ -1,8 +1,8 @@
 import typing
 import hashlib
 import wallet
-import util
-from util import uitob, dtob
+from noobcash.blockchain import util
+from noobcash.blockchain.util import uitob, dtob
 
 
 class TransactionOutput:

@@ -3,9 +3,9 @@ import time
 import hashlib
 import sys
 import subprocess
-from transaction import Transaction
-import util
-from util import uitob, btoui
+from noobcash.blockchain.transaction import Transaction
+from noobcash.blockchain import util
+from noobcash.blockchain.util import uitob, btoui
 
 
 # Storage
