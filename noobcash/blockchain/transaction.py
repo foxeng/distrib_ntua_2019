@@ -1,7 +1,6 @@
 import typing
 import hashlib
-import wallet
-from noobcash.blockchain import util
+from noobcash.blockchain import util, wallet
 from noobcash.blockchain.util import uitob, dtob
 
 
@@ -60,7 +59,7 @@ class TransactionOutput:
 class TransactionInput:
 
     def __init__(self, transaction_id: bytes, index: int):
-        # TODO OPT: Check that len(transaction_id) == 256?
+        # TODO OPT: Check that len(transaction_id) == 256 // 8?
         index = int(index)
         if not (isinstance(transaction_id, bytes) and \
                 (index in (0, 1))):
