@@ -1,4 +1,4 @@
-from noobcash.blockchain import blockchain, transaction
+from noobcash.blockchain import blockchain, transaction, util
 
 def newReceivedTransaction(transJson):
     #print("newReceivedTransaction Called with transString:")
@@ -12,6 +12,9 @@ def newCreatedTransaction(dst, value):
     blockchain.new_recv_transaction(trans)
     # print("newCreatedTransaction Called with dst: {} & value {}:".format(dst, value))
 
+
+def generateTransaction(node_id, value):
+    blockchain.generate_transaction(node_id, value)                
 
 
 def newReceivedBlock(blockString):
@@ -33,6 +36,23 @@ def getBlock(blockId):
 def getBalance(walletId):
     #print("getBalance called with walletId"  + walletId)
     balance = blockchain.get_balance()
-    # balance = 100 + int(walletId)
     return balance
 
+
+def setIp(entry):
+    util.set_ip(entry)
+
+
+def getIp(entry):
+    return util.get_ip()
+
+
+def getTotalNodes():
+    return util.get_nodes()
+
+
+def incNodeCounter():
+    return util.incr_registered_nodes()
+    
+def getNodeCounter():
+    return util.get_registered_nodes()

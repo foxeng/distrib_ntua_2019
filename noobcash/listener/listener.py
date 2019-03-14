@@ -1,12 +1,12 @@
-from flask import Flask, request, Response, abort
 import json
-from noobcash.blockchain import util
+import requests
+
+from flask import Flask, request, Response, abort
 from . import blockchainApi
-from .. instance import config
+from noobcash.instance import config
 from noobcash import app
 from threading import Thread
 from time import sleep
-import requests
 
 LOCALHOST="127.0.0.1"
 
@@ -61,26 +61,26 @@ def lstHistory():
 @app.route("/initialisation", methods=['GET', 'POST'])
 def lstInitialisation():
     if config.IS_NODE_0 == True:
-        config.nodeIdCounter += 1
-        newNodeId = config.nodeIdCounter
+        newNodeId = blockchainApi.incNodeCounter()
         ipAddr = request.remote_addr
-        walletId = request.get_json()["walletId"]
         port = request.environ['REMOTE_PORT']
-        entryValue = {"ipAddr": ipAddr, "port" : port, "pubWalletId" : walletId}
+        entryValue = {"ipAddr": ipAddr, "port" : port}
         entry = {newNodeId : entryValue}
-        util.set_ip(entry)
-        if config.nodeIdCounter == util.get_nodes():
+        blockchainApi.setIp(entry)
+        if blockchainApi.getNodeCounter() == blockchainApi.getTotalNodes():
             def threadFn():
                 sleep(0.1) #wait a bit to make sure that the listener is started
                 routingTable = {}
-                for i in range(0, util.get_nodes()):
-                    ipEntry = util.get_ip(i)
+                for i in range(0, blockchainApi.getTotalNodes()):
+                    ipEntry = blockchainApi.getIp(i)
                     routingTable.update(ipEntry)
-                for i in range(1, config.NUMBER_OF_NODES):
-                    ipEntry = util.get_ip(i)
+                for i in range(1, blockchainApi.getTotalNodes()):
+                    ipEntry = blockchainApi.getIp(i)
                     url = ipEntry["ipAddress"] + ":" + ipEntry["port"]
                     r = requests.post(url, json= {"routingTable" : routingTable})  
-                    print("")
+                
+                for i in range (1, blockchainApi.getTotalNodes()):
+                    blockchainApi.generateTransaction(i, 100.0)
                 return 
                 
             thread = Thread(target=threadFn)
@@ -90,5 +90,5 @@ def lstInitialisation():
     else:
         routingTable = request.get_json()["routingTable"]
         for key, value in routingTable:
-            util.set_ip({key: value})
+            blockchainApi.setIp({key: value})
         return response
