@@ -1,6 +1,6 @@
 import sys
-from block import Block
-from util import uitob
+from .block import Block
+from .util import uitob
 
 
 # TODO: Is killing this process while mining ok (see redis)? Do we need to implement a SIGTERM
