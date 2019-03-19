@@ -7,12 +7,9 @@ from noobcash.blockchain.util import uitob, dtob, stobin, bintos
 class TransactionOutput:
 
     def __init__(self, index: int, recipient: bytes, amount: float) -> None:
-        # TODO OPT: Check that amount >= 0?
-        index = int(index)
-        if not (isinstance(recipient, bytes) and \
-                (index in (0, 1))):
+        if not isinstance(recipient, bytes):
             raise TypeError
-        self.index = index
+        self.index = int(index)
         self.recipient = recipient
         self.amount = float(amount)
 
@@ -20,9 +17,12 @@ class TransactionOutput:
     # knowledge of the transaction of origin, which we currently don't store
     # locally.
 
+    def __repr__(self) -> str:
+        return self.dumps()
+
     def dumpb(self) -> bytes:
         """Dump to bytes"""
-        # NOTE: we can't easily have a proper binary encoding because the keys
+        # NOTE: We can't easily have a proper binary encoding because the keys
         # (addresses) don't have a fixed size bytes representation
         return self.dumps().encode()
 
@@ -59,13 +59,10 @@ class TransactionOutput:
 class TransactionInput:
 
     def __init__(self, transaction_id: bytes, index: int):
-        # TODO OPT: Check that len(transaction_id) == 256 // 8?
-        index = int(index)
-        if not (isinstance(transaction_id, bytes) and \
-                (index in (0, 1))):
+        if not isinstance(transaction_id, bytes):
             raise TypeError
         self.transaction_id = transaction_id    # the id of the feeding transaction
-        self.index = index
+        self.index = int(index)
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, TransactionInput):
@@ -76,9 +73,12 @@ class TransactionInput:
     def __hash__(self) -> int:
         return int.from_bytes(self.dumpb(), byteorder="big")
 
+    def __repr__(self) -> str:
+        return self.dumps()
+
     def dumpb(self) -> bytes:
         """Dump to bytes"""
-        # TODO OPT: this could have a proper binary encoding
+        # TODO OPT: This could have a proper binary encoding
         return self.dumps().encode()
 
     def dumpo(self) -> typing.Mapping[str, typing.Any]:
@@ -135,15 +135,15 @@ class Transaction:
                 isinstance(inputs, list) and \
                 all(isinstance(i, TransactionInput) for i in inputs)):
             raise TypeError
-        self.recipient = recipient  # TODO OPT: is this necessary?
-        self.amount = float(amount) # TODO OPT: is this necessary?
+        self.recipient = recipient  # TODO OPT: Is this necessary? (it's duplicated in the output)
+        self.amount = float(amount) # TODO OPT: Is this necessary? (it's duplicated in the output)
         self.inputs = inputs
 
         if sender is None and outputs is None and id_ is None and signature is None:
             self.sender = wallet.get_public_key().dumpb()
             self.outputs = [
                 TransactionOutput(0, self.recipient, self.amount),
-                TransactionOutput(1, self.sender, float(input_amount) - self.amount)
+                TransactionOutput(1, self.sender, float(input_amount) - self.amount)    # type: ignore
             ]
             self.id = self.hash()
             self.signature = wallet.sign(self.id)
@@ -167,8 +167,11 @@ class Transaction:
     def __hash__(self) -> int:
         return int.from_bytes(self.id, byteorder="big")
 
+    def __repr__(self) -> str:
+        return self.dumps()
+
     def hash(self) -> bytes:
-        # NOTE: this is necessary because:
+        # NOTE: This is necessary because:
         # - __hash__() must return an int
         # - hash() truncates the value returned from __hash__()
         h = hashlib.sha256()
@@ -239,6 +242,9 @@ class Transaction:
         # # of inputs > 0
         if not self.inputs:
             return False
+        # inputs[i].index == 0 or 1
+        if not all(i.index in (0, 1) for i in self.inputs):
+            return False
         # # of outputs == 2
         if len(self.outputs) != 2:
             return False
@@ -263,7 +269,7 @@ class Transaction:
 
     def dumpb(self) -> bytes:
         """Dump to bytes"""
-        # NOTE: we can't easily have a proper binary encoding because the keys
+        # NOTE: We can't easily have a proper binary encoding because the keys
         # (addresses) don't have a fixed size bytes representation
         return self.dumps().encode()
 

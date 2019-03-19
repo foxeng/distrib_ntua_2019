@@ -80,7 +80,9 @@ def incr_registered_nodes(inc: int = 1) -> int:
     return r.incr("util:registered_nodes", inc)
 
 
-get_registered_nodes = functools.partial(incr_registered_nodes, inc=0)
+def get_registered_nodes() -> int:
+    # incr_registered_nodes() conveniently returns the registered nodes
+    return incr_registered_nodes(0)
 
 
 def get_ip(node_id: int) -> typing.Mapping[str, str]:   # TODO OPT: This can support multiple IDs

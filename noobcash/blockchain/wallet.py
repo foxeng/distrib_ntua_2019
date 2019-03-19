@@ -16,7 +16,7 @@ from noobcash.blockchain import util
 
 class PublicKey:
 
-    # TODO OPT: cache key both as an object and serialized to avoid extra conversions
+    # TODO OPT: Cache key both as an object and serialized to avoid extra conversions
     def __init__(self, key: rsa.RSAPublicKeyWithSerialization) -> None:
         if not isinstance(key, rsa.RSAPublicKeyWithSerialization):
             raise TypeError
@@ -30,8 +30,11 @@ class PublicKey:
     def __hash__(self) -> int:
         return int.from_bytes(self.dumpb(), byteorder="big")
 
+    def __repr__(self) -> str:
+        return self.dumps()
+
     def verify(self, message: bytes, signature: bytes) -> bool:
-        # NOTE: we use hashlib instead of cryptography's SHA256 because it's
+        # NOTE: We use hashlib instead of cryptography's SHA256 because it's
         # much faster
         h = hashlib.sha256()
         h.update(message)
@@ -76,7 +79,7 @@ class PublicKey:
 
 class PrivateKey:
 
-    # TODO OPT: cache key both as an object and serialized to avoid extra conversions
+    # TODO OPT: Cache key both as an object and serialized to avoid extra conversions
     def __init__(self,
                  key_size: int = 4096,
                  key: rsa.RSAPrivateKeyWithSerialization = None) -> None:
@@ -95,11 +98,11 @@ class PrivateKey:
     def __hash__(self) -> int:
         return int.from_bytes(self.dumpb(), byteorder="big")
 
-    def public_key(self) -> 'PublicKey':
+    def public_key(self) -> PublicKey:
         return PublicKey(key=self._key.public_key())
 
     def sign(self, message: bytes) -> bytes:
-        # NOTE: we use hashlib instead of cryptography's SHA256 because it's
+        # NOTE: We use hashlib instead of cryptography's SHA256 because it's
         # much faster
         h = hashlib.sha256()
         h.update(message)
