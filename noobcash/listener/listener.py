@@ -94,7 +94,7 @@ def lstInitialisation():
         entryValue = {"ipAddr": ipAddr, "port" : port}
         entry = {newNodeId : entryValue}
         blockchainApi.setIp(entry)
-        if blockchainApi.getNodeCounter() == blockchainApi.getTotalNodes():
+        if blockchainApi.getNodeCounter() == blockchainApi.getTotalNodes() - 1:
             def threadFn():
                 sleep(0.1) #wait a bit to make sure that the listener is started
                 routingTable = {}
