@@ -9,4 +9,4 @@ app.config.from_mapping(
 app.config.from_pyfile('flask.cfg', silent=False)
 app.config.from_envvar('NOOBCASH_SETTINGS', silent=True)
 
-import noobcash.app
+import noobcash.listener.listener

@@ -3,12 +3,39 @@ import requests
 
 from flask import Flask, request, Response, abort
 from . import blockchainApi
-from noobcash.instance import config
+from instance import config
 from noobcash import app
 from threading import Thread
 from time import sleep
+from noobcash.blockchain import wallet, blockchain
+from noobcash.blockchain import util
 
 LOCALHOST="127.0.0.1"
+
+@app.before_first_request
+def _initialization():
+    print("FOO")
+    if (config.IS_NODE_0) == True:
+
+        print("I am Node 0")
+        util.set_nodes(config.NUMBER_OF_NODES)
+        util.set_node_id(0)
+        wallet.generate_wallet(0)
+        blockchain.generate_genesis()
+        #app.run()
+    else:
+        node_0_url = config.NODE_0_IP_ADDRESS + ":" + config.NODE_0_PORT
+        r = requests.get(node_0_url + "initialiasation")
+        nodeId = r.json()["nodeId"]
+        util.set_node_id(nodeId)
+        print("sad")
+        wallet.generate_wallet(nodeId)
+        #app.run()    
+
+
+@app.route("/")
+def welcome():
+    return("<h1> We are rolling </h1>")
 
 #listener = Flask(__name__)
 @app.route("/transaction", methods=['POST'])
