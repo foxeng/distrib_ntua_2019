@@ -43,11 +43,11 @@ if sys.argv[1] == 't':
         "dst": sys.argv[2],
         "amount": sys.argv[3]
     }
-    r = requests.post("localhost:5000/transaction", json=payload)
+    r = requests.post("https://localhost:5000/transaction", json=payload)
     err_print(r.status_code)
 
 elif sys.argv[1] == 'view':
-    r =  requests.get("localhost:5000/history")
+    r =  requests.get("https://localhost:5000/history")
     err_print(r.status_code)
     print_block(r.json()["block"])
 
@@ -55,7 +55,7 @@ elif sys.argv[1] == 'balance':
     payload = {
         "walletId": "321312" # random value
     }
-    r =  requests.get("localhost:5000/balance", data=payload)
+    r =  requests.get("https://localhost:5000/balance", data=payload)
     err_print(r.status_code)
     print("balance:",r.json()["balance"])
 
