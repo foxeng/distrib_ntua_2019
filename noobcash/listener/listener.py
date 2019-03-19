@@ -96,9 +96,7 @@ def lstInitialisation():
         port = request.get_json()["port"]
         entryValue = {"ipAddr": ipAddr, "port" : port}
         entry = {newNodeId : entryValue}
-        print(entry)
         blockchainApi.setIp(entry)
-        print(util.get_ip(newNodeId))
         if blockchainApi.getNodeCounter() == blockchainApi.getTotalNodes() - 1:
             def threadFn():
                 sleep(0.1) #wait a bit to make sure that the listener is started
@@ -122,8 +120,9 @@ def lstInitialisation():
         return response
     else:
         routingTable = request.get_json()["routingTable"]
-        for key, value in routingTable:
+        for key, value in routingTable.items():
             print(key)
             print(value)
             blockchainApi.setIp({key: value})
-        return response
+        
+        return("<h1> Routing Table Received <\h1>")
