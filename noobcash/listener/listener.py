@@ -24,11 +24,11 @@ def _initialization():
         blockchain.generate_genesis()
         #app.run()
     else:
-        node_0_url = config.NODE_0_IP_ADDRESS + ":" + config.NODE_0_PORT
-        r = requests.get(node_0_url + "initialiasation")
+        node_0_url = "http://" + config.NODE_0_IP_ADDRESS + ":" + config.NODE_0_PORT
+        r = requests.get(node_0_url + "/initialisation")
         nodeId = r.json()["nodeId"]
         util.set_node_id(nodeId)
-        print("sad")
+        print(nodeId)
         wallet.generate_wallet(nodeId)
         #app.run()    
 
@@ -117,5 +117,7 @@ def lstInitialisation():
     else:
         routingTable = request.get_json()["routingTable"]
         for key, value in routingTable:
+            print(key)
+            print(value)
             blockchainApi.setIp({key: value})
         return response
