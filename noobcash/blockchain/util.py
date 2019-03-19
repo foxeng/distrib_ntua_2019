@@ -76,6 +76,8 @@ def set_nodes(nodes: int) -> None:
 
 
 def incr_registered_nodes(inc: int = 1) -> int:
+    """Increment the registered node counter. When calling this for the first
+    time, consider the counter as automatically initialized to 0."""
     r = get_db()
     return r.incr("util:registered_nodes", inc)
 

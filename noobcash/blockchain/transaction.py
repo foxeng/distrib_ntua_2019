@@ -143,7 +143,7 @@ class Transaction:
             self.sender = wallet.get_public_key().dumpb()
             self.outputs = [
                 TransactionOutput(0, self.recipient, self.amount),
-                TransactionOutput(1, self.sender, float(input_amount) - self.amount)    # type: ignore
+                TransactionOutput(1, self.sender, float(input_amount) - self.amount)  # type: ignore
             ]
             self.id = self.hash()
             self.signature = wallet.sign(self.id)
