@@ -92,7 +92,6 @@ def lstInitialisation():
     if config.IS_NODE_0 == True:
         newNodeId = blockchainApi.incNodeCounter()
         ipAddr = request.remote_addr
-        #port = request.environ['REMOTE_PORT']
         port = request.get_json()["port"]
         entryValue = {"ipAddr": ipAddr, "port" : port}
         entry = {newNodeId : entryValue}
@@ -104,10 +103,11 @@ def lstInitialisation():
                 for i in range(0, blockchainApi.getTotalNodes()):
                     print(i)
                     ipEntry = blockchainApi.getIp(i)
-                    routingTable.update(ipEntry)
+                    routingTable.update({i : ipEntry})
+
                 for i in range(1, blockchainApi.getTotalNodes()):
                     ipEntry = blockchainApi.getIp(i)
-                    url = "http://" + ipEntry["ipAddr"] + ":" + str(ipEntry["port"])
+                    url = "http://" + ipEntry["ipAddr"] + ":" + str(ipEntry["port"] + "/initialisation")
                     r = requests.post(url, json= {"routingTable" : routingTable})  
                 
                 for i in range (1, blockchainApi.getTotalNodes()):
