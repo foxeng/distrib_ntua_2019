@@ -44,7 +44,7 @@ def setIp(entry):
 
 
 def getIp(entry):
-    return util.get_ip()
+    return util.get_ip(entry)
 
 
 def getTotalNodes():
