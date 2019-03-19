@@ -27,7 +27,7 @@ def _initialization():
         #app.run()
     else:
         node_0_url = "http://" + config.NODE_0_IP_ADDRESS + ":" + config.NODE_0_PORT
-        r = requests.get(node_0_url + "/initialisation", json= {"port" : environ('FLASK_RUN_PORT')})
+        r = requests.get(node_0_url + "/initialisation", json= {"port" : environ.get('FLASK_RUN_PORT')})
         nodeId = r.json()["nodeId"]
         util.set_node_id(nodeId)
         print(nodeId)
