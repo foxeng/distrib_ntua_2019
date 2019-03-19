@@ -121,8 +121,6 @@ def lstInitialisation():
     else:
         routingTable = request.get_json()["routingTable"]
         for key, value in routingTable.items():
-            print(key)
-            print(value)
             blockchainApi.setIp({key: value})
         
         return("<h1> Routing Table Received <\h1>")
