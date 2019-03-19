@@ -135,7 +135,7 @@ def _check_for_new_block() -> None:
         for t in tx_pool:
             # Search for t.inputs in UTXO-block[last_block] as well as in new_block_tx
             if all(r.hexists(utxo_block, i.dumpb()) or \
-                   any(nt.id = i.transaction_id for nt in new_block_tx) for i in t.inputs):
+                   any(nt.id == i.transaction_id for nt in new_block_tx) for i in t.inputs):
                 new_block_tx.append(t)
                 if len(new_block_tx) == CAPACITY:
                     new_block = Block(index=last_block.index + 1,
@@ -254,7 +254,7 @@ def new_recv_block(recv_block: Block) -> bool:
         # OK Case 1 (b.previous_hash == last_block):
         # TODO OPT: This can be factored out to validate_block()
         referenced_txos: typing.Set[bytes] = set()  # the utxos from UTXO-block spent in recv_block
-        new_utxos: typing.Mapping[bytes, bytes] = {}
+        new_utxos: typing.Dict[bytes, bytes] = {}
         # OK 1  For all but the coinbase transaction, apply the following:
         for t in recv_block.transactions:
             # OK 1  For each input, look in the main branch to find the referenced output
