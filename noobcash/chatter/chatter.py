@@ -5,12 +5,12 @@ from noobcash.blockchain.util import get_ip
 
 
 def send_post_request(node_id, payload, arg):
-    r = requests.post("https://" + get_ip(node_id)["ipAddr"] + ":" + get_ip(node_id)["port"] + \
+    r = requests.post("http://" + get_ip(node_id)["ipAddr"] + ":" + get_ip(node_id)["port"] + \
                           "/" + arg, json=payload)
 
 
 def send_get_request(node_id, payload, arg):
-    r = requests.get("https://" + get_ip(node_id)["ipAddr"] + ":" + get_ip(node_id)["port"] + \
+    r = requests.get("http://" + get_ip(node_id)["ipAddr"] + ":" + get_ip(node_id)["port"] + \
                          "/" + arg, data=payload)
 
 
