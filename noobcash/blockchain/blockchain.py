@@ -45,7 +45,13 @@ def get_block(block_id: Optional[bytes] = None) -> Block:
     r = util.get_db()
     if block_id is None:
         block_id = r.get("blockchain:last_block")
+        if block_id is None:
+            # The blockchain is empty
+            return None
     blockb = r.hget("blockchain:blocks", block_id)
+    if blockb is None:
+        # Requested block not found
+        return None
     return Block.loadb(blockb)
 
 
@@ -102,10 +108,11 @@ def dump() -> None:
     """Broadcast every block in the main branch"""
     r = util.get_db()
     chain: List[Block] = []
-    b = Block.loadb(r.hget("blockchain:blocks", r.get("blockchain:last_block")))
-    while not b.is_genesis():
+    b = get_block()
+    while not b is None:
         chain.append(b)
-        b = Block.loadb(r.hget("blockchain:blocks", b.previous_hash))
+        # Not the most efficient way, but the most elegant
+        b = get_block(b.previous_hash)
 
     for b in reversed(chain):
         # TODO: Broadcast b

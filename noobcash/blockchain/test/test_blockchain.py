@@ -171,9 +171,10 @@ def test_block():
 def test_blockchain():
     blockchain.generate_genesis()
     assert blockchain.get_block().is_genesis()
-
     assert blockchain.get_balance(0) == 100 * NODES
     assert blockchain.get_balance(1) == 0
+
+    assert blockchain.get_block(b"foobar") is None
 
     # Adding blocks while the tx_pool is empty
     valid_blocks = blocks["valid"]
