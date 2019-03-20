@@ -40,8 +40,8 @@ def err_print(status_code):
 
 if sys.argv[1] == 't':
     payload = {
-        "dst": sys.argv[2],
-        "amount": sys.argv[3]
+        "dst": int(sys.argv[2]),
+        "amount": int(sys.argv[3])
     }
     r = requests.post("https://localhost:5000/transaction", json=payload)
     err_print(r.status_code)
@@ -58,6 +58,19 @@ elif sys.argv[1] == 'balance':
     r =  requests.get("https://localhost:5000/balance", data=payload)
     err_print(r.status_code)
     print("balance:",r.json()["balance"])
+
+elif sys.argv[1] == '-r':
+    filename = sys.argv[2]
+    with open(filename, 'r') as f:
+        for line in f:
+            line = line[2:]
+            fields = line.split()
+            payload = {
+                "dst": int(fields[0]),
+                "amount": int(fields[1])
+            }
+            r = requests.post("https://localhost:5000/transaction", json=payload)
+            err_print(r.status_code)
 
 elif sys.argv[1] == 'help':
     print("t <recipient_address> <amount>: send to recipient_address the amount of NBC coins from the wallet of sender_address.\n")
