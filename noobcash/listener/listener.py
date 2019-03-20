@@ -77,8 +77,10 @@ def lstBalance():
     if request.remote_addr != LOCALHOST:
         return abort(403)
     else:
-        walletId = request.get_json()["walletId"]
-        balance = blockchainApi.getBalance(walletId)
+        # Does the client send the walletId ?
+        #walletId = request.get_json()["walletId"]
+        #balance = blockchainApi.getBalance(walletId)
+        balance = blockchain.get_balance()
         response = Response(json.dumps({"balance" : balance}), status=200, mimetype="application/json")
         return response
 
@@ -113,6 +115,7 @@ def lstFinalise():
         pubKeyStr = request.get_json()["pubKey"]
         tempKey = tempKey.loads(pubKeyStr)
         wallet.set_public_key(nodeId, tempKey)
+        blockchainApi.generateTransaction(nodeId, 100.0)
         if blockchainApi.getNodeCounter() == blockchainApi.getTotalNodes() - 1:
             def threadFn():
                 sleep(0.1) #wait a bit to make sure that the listener is started
@@ -126,10 +129,7 @@ def lstFinalise():
                     ipEntry = blockchainApi.getIp(i)
                     url = "http://" + ipEntry["ipAddr"] + ":" + str(ipEntry["port"] + "/finalisation")
                     r = requests.post(url, json= {"routingTable" : routingTable})  
-                
-                for i in range (1, blockchainApi.getTotalNodes()):
-                    blockchainApi.generateTransaction(i, 100.0)
-                return                
+                blockchain.dump()               
             thread = Thread(target=threadFn)
             thread.start()
         return ("<h1> PubKey from {} Noted</h1>".format(nodeId))
