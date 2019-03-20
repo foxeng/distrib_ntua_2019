@@ -17,23 +17,23 @@ CAPACITY = 3
 DIFFICULTY = 4
 
 TRANSACTION_DATA = [
-    {
+    {   # #0 0 -> 1: 100
         "recipient": 1,    # node id
         "amount": 100,
         "inputs": [
             {
-                "transaction_id": -1,   # the genesis
+                "transaction_id": -1,   # the genesis transaction
                 "index": 0
             }
         ],
         "input_amount": 100 * NODES
     },
-    {
+    {   # #1 1 -> 0: 12.5 (easier to calculate a whole transaction early on)
         "recipient": 0,
         "amount": 12.5,
         "inputs": [
             {
-                "transaction_id": 0,    # the first of these transactions
+                "transaction_id": 0,    # not the actual id, but an index into this list
                 "index": 0
             }
         ],
@@ -54,7 +54,7 @@ TRANSACTION_DATA = [
         "id_": b"\x85\xd0Ed\xd5x\xd2\x8a\xa1\xa7'\x82\xd7eS\xfdf\xc9)\xec9\x19x\x16AH\x95A\x19\x8a\x8bA",
         "signature": b'S\xb4\x1eC\x9ea\xd1m*3o\xcd\xb0\xaf\xf7\x13\x03\x81S\x86\x1d\xf6\xd5\xee\xb2\x85\xaeN\xee\xa6\xe4z=bW\x9e\xc4\x16\x12Z\x85\xbd{\xa1\xf1Q2 \xff\xcb\x82\xbe\x881M4\x97\x98\x11\x85\xcc\x12e\x1a`\x0f"8\xeb1\xab\x92\x9cT\x8cNQ5\xf8t\xa6\tJ`\xec\xd2\x93\xe0sH\xd8\xe1E\x87T\x18s\xc2n\xc8\x8d\xa4\xeaE\x84FS4.\x86\x18\xa3\xb7\xf7.\xdeds\x19\x87\x86\x1dD\x1d~~\x96\xe1\x99,\xa2\xe2\x957\xe1\xdf\xa2\xd0I\x89\x05ca\xed\xc3,f/\xb7\x12\r\xa8U\xac\xbfX\xb7\x9d\xda\xbd\xc7e\xc26\xc3%\xb5\xfd\xe7*_]\x8d:p6j\xc6\xeeb\xb0\xdd\xc4\xf9\xe3\x94\xb3HM \xdano+9 rlv\xea\x08=\x16a\xc6i\xa7U6?ZX\xd0^\xd9F\xfb"\xc6\x95\xd7!\xf6\xc01\xfa\x85\x13\xcee\xa2\x19\x1b\xd4\xa2\xe4\x9e\xedn\xa8\x8d0C\xbb\x8f\xd3\x99\xcd\x05\x8ez\xbfecf[y\xaf\x17G\x90\x8e\x88"\xde\x8aZfq\xd2\x83\x94\x9e\x8f\xeb\x121\xa3\xd7\xf8\xba\xb9\xcaOM\x9a\xf8\xc0\x90\xdc\x1b\x800\x17\x95\xfa\x87\x83+\t\x01\x8f\x06\x99\r\xf6\x0e\t\\\xf9\x19\xdd\x13mB\xdb\xf7.{\x0e\xe2\xe8\x19\xf1\xe2\x1a\xdf\x8c\xcaj\xda[\xba^5\xf3>\x07\xb6m}\xc8[\xd6\x12l\xdc\xa8\xb3\xf0t\x1e\x97\x80\xfeX\x16\r\x81\xb1q\xdf\xb0M\x06\xc5\xf8\x7f\nWs\xbe\xb4>R%\xb2\xbe\x9f\x8a\x97\xd0\x9b\x12\xaf\x1a\x90\xa2\xf7w\x14]\xf1\xf4\xc9\xc5\xc4bz\xe7\x01\xd4\xc6\x8eG<F\xea%[\xa6~r\xd9/T\x04WHHl\x81\x88o,\x9a\rH\x16\xf4Y\xf2*3X9E\xd8\x1d\xc8\x1a\r\xca\xed2\xf5\xa6\x82\x03\x04 \xa0n\xee\xa84\xd6O]]U\x9dj\xf86r\x9c\xb6\xe7_p\x91a1"2\xca\x0b;\xf5B\x95\xff\xf6\x8fB3\xddX-q\x12\xa3\xe0\xe7*\x18A?\x9b\x7faC\xe8Q\xed\xc7%\xbb\x1e\xac='
     },
-    {
+    {   # #2 0 -> 2: 100
         "recipient": 2,
         "amount": 100,
         "inputs": [
@@ -65,7 +65,7 @@ TRANSACTION_DATA = [
         ],
         "input_amount": 100 * NODES - 100
     },
-    {
+    {   # #3 0 -> 3: 100
         "recipient": 3,
         "amount": 100,
         "inputs": [
@@ -76,7 +76,7 @@ TRANSACTION_DATA = [
         ],
         "input_amount": 100 * NODES - 2 * 100
     },
-    {
+    {   # #4 0 -> 4: 100
         "recipient": 4,
         "amount": 100,
         "inputs": [
@@ -87,7 +87,7 @@ TRANSACTION_DATA = [
         ],
         "input_amount": 100 * NODES - 3 * 100
     },
-    {
+    {   # #5 0 -> 1: 7
         "recipient": 1,
         "amount": 7,
         "inputs": [
@@ -101,5 +101,88 @@ TRANSACTION_DATA = [
             }
         ],
         "input_amount": 100 + 12.5
+    },
+    {   # #6 0 -> 2: 8
+        "recipient": 2,
+        "amount": 8,
+        "inputs": [
+            {
+                "transaction_id": 5,
+                "index": 1
+            }
+        ],
+        "input_amount": 100 + 12.5 - 7
+    },
+    {   # #7 3 -> 2: 6
+        "recipient": 2,
+        "amount": 6,
+        "inputs": [
+            {
+                "transaction_id": 3,
+                "index": 0
+            }
+        ],
+        "sender": 3,    # the right transaction will be created if we specify only the sender
+        "input_amount": 100
+    },
+    {   # #8 2 -> 4: 4
+        "recipient": 4,
+        "amount": 4,
+        "inputs": [
+            {
+                "transaction_id": 7,
+                "index": 0
+            }
+        ],
+        "sender": 2,
+        "input_amount": 6
+    },
+    {   # #9 0 -> 2: 7
+        "recipient": 2,
+        "amount": 7,
+        "inputs": [
+            {
+                "transaction_id": 6,
+                "index": 1
+            }
+        ],
+        "input_amount": 100 + 12.5 - 7 - 8
     }
 ]
+
+BLOCK_DATA = {
+    "valid": [
+        {
+            "index": 1,
+            "previous_hash": -1,    # the genesis block
+            "transactions": [0, 2, 3]   # indices into TRANSACTION_DATA
+        },
+        {
+            "index": 2,
+            "previous_hash": 0,    # not the actual hash, but an index into this list
+            "transactions": [1, 4, 5]
+        }
+    ],
+    "invalid": [
+        {
+            "index": 12345,
+            "previous_hash": 0,
+            "transactions": [1, 4, 5]
+        },
+        {
+            "index": 2,
+            "previous_hash": 0,
+            "transactions": [1] * CAPACITY
+        },
+        {
+            "index": 2,
+            "previous_hash": 0,
+            "transactions": [1, 2, 3]
+        },
+        {
+            "index": 2,
+            "previous_hash": 0,
+            "transactions": [5, 4, 1]
+        }
+    ]
+}

@@ -1,7 +1,7 @@
 from copy import deepcopy
 import subprocess
 import sys
-from noobcash.blockchain import wallet, util, block
+from noobcash.blockchain import wallet, util, block, blockchain
 from noobcash.blockchain.wallet import PrivateKey, PublicKey
 from noobcash.blockchain.transaction import Transaction, TransactionInput, TransactionOutput
 from noobcash.blockchain.block import Block
@@ -9,6 +9,16 @@ from noobcash.blockchain.test.test_data import *
 
 
 transactions = []
+blocks = {
+    "valid": [],
+    "invalid": []
+}
+
+
+def change_id(id_: int) -> None:
+    r = util.get_db()
+    r.set("wallet:privkey", PRIVKEYSB[id_])
+    util.set_node_id(id_)
 
 
 def test_util():
@@ -47,6 +57,7 @@ def test_transaction():
     assert Transaction.loadb(gt.dumpb()) == gt
     assert Transaction.loads(gt.dumps()) == gt
 
+    # TODO: Create transactions with only sender specified in the data (change_id())
     for td in TRANSACTION_DATA:
         sender_id = td.get("sender")
         sender = PUBKEYSB[sender_id] if sender_id is not None else None
@@ -59,6 +70,10 @@ def test_transaction():
                               recipient=PUBKEYSB[tod[1]["recipient"]],
                               amount=tod[1]["amount"])
         ] if tod is not None else None
+        if sender is not None and outputs is None:
+            # If only sender is specified (apart from the necessary parameters),
+            # temporarily pretend to be sender
+            change_id(sender_id)
         t = Transaction(recipient=PUBKEYSB[td["recipient"]],
                         amount=td["amount"],
                         inputs=[TransactionInput(
@@ -66,10 +81,13 @@ def test_transaction():
                                 if tid["transaction_id"] >= 0 else gt.id,
                             index=tid["index"]) for tid in td["inputs"]],
                         input_amount=td.get("input_amount"),
-                        sender=sender,
+                        sender=sender if outputs is not None else None,
                         outputs=outputs,
                         id_=td.get("id_"),
                         signature=td.get("signature"))
+        if sender is not None and outputs is None:
+            # Change back
+            change_id(NODE_ID)
         transactions.append(t)
 
         assert not t.is_genesis()
@@ -103,46 +121,80 @@ def test_block():
     assert Block.loadb(gb.dumpb()) == gb
     assert Block.loads(gb.dumps()) == gb
 
-    b = Block(index=1,
-              previous_hash=gb.current_hash,
-              transactions=transactions[:CAPACITY])
-    python = sys.executable if sys.executable else 'python3'
-    miner = subprocess.run(args=[
-                               python,
-                               "-m",
-                               "noobcash.blockchain.miner",
-                               str(DIFFICULTY),
-                               "-echo"
-                           ],
-                           input=b.dumps(),
-                           stdout=subprocess.PIPE,
-                           check=True,
-                           universal_newlines=True)
-    mined = Block.loads(miner.stdout)
-    b.timestamp = mined.timestamp
-    b.nonce = mined.nonce
-    b.current_hash = mined.current_hash
-    assert b.verify()
-    assert not mined.is_genesis()
-    assert mined.verify()
+    for validity in ("valid", "invalid"):
+        for bd in BLOCK_DATA[validity]:
+            prev_block = blocks["valid"][bd["previous_hash"]] if bd["previous_hash"] >= 0 else gb
+            # TODO: Test specifying a whole block
+            b = Block(index=bd["index"],
+                      previous_hash=prev_block.current_hash,
+                      transactions=[transactions[i] for i in bd["transactions"]])
+            python = sys.executable if sys.executable else 'python3'
+            miner = subprocess.run(args=[python,
+                                         "-m",
+                                         "noobcash.blockchain.miner",
+                                         str(DIFFICULTY),
+                                         "-echo"],
+                                   input=b.dumps(),
+                                   stdout=subprocess.PIPE,
+                                   check=True,
+                                   universal_newlines=True)
+            mined = Block.loads(miner.stdout)
+            b.timestamp = mined.timestamp
+            b.nonce = mined.nonce
+            b.current_hash = mined.current_hash
+            assert not mined.is_genesis()
+            assert b.verify()
+            assert mined.verify()
+            assert Block.loadb(b.dumpb()) == mined
+            assert Block.loads(mined.dumpb()) == b
 
-    b = deepcopy(mined)
+            blocks[validity].append(b)
+
+    b0 = blocks["valid"][0]
+    b = deepcopy(b0)
     b.transactions = b.transactions[:len(b.transactions) - 1]
     assert not b.verify()
-    b = deepcopy(mined)
+    b = deepcopy(b0)
     b.transactions[0].amount += 10
     assert not b.verify()
-    b = deepcopy(mined)
+    b = deepcopy(b0)
     b.transactions[0].amount += 10
     assert not b.verify()
-    b = deepcopy(mined)
+    b = deepcopy(b0)
     b.nonce += 12345
     assert not b.verify()
-    b = deepcopy(mined)
+    b = deepcopy(b0)
     b.current_hash = b"0" * (256 // 8)
     assert not b.verify()
 
 
 def test_blockchain():
-    # TODO
-    pass
+    blockchain.generate_genesis()
+    assert blockchain.get_block().is_genesis()
+
+    assert blockchain.get_balance(0) == 100 * NODES
+    assert blockchain.get_balance(1) == 0
+
+    # Adding blocks while the tx_pool is empty
+    valid_blocks = blocks["valid"]
+    invalid_blocks = blocks["invalid"]
+    b0 = valid_blocks[0]
+    assert blockchain.new_recv_block(b0)
+    assert blockchain.get_block() == b0
+    assert blockchain.get_block(b0.current_hash) == b0
+    assert blockchain.get_balance(0) == 100 * (NODES - CAPACITY)
+    assert blockchain.get_balance(1) == 100
+
+    for b in invalid_blocks:
+        assert not blockchain.new_recv_block(b)
+
+    assert not blockchain.new_recv_block(b0)
+    b1 = valid_blocks[1]
+    assert blockchain.new_recv_block(b1)
+    assert blockchain.get_balance(0) == 100 + 12.5 - 7
+    assert blockchain.get_balance(1) == 100 - 12.5 + 7
+    assert blockchain.get_balance(2) == 100
+
+    # TODO: Receive some transactions (but not enough to fill a block)
+    # TODO: Generate some transactions (but not enough to fill a block)
+    # TODO: Add blocks on side branches (eventually doing a rebase)

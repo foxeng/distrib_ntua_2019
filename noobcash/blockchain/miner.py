@@ -1,7 +1,7 @@
 import sys
 import time
 from noobcash.blockchain.block import Block
-from noobcash.blockchain.util import uitob
+from noobcash.blockchain import util
 
 
 # TODO: Is killing this process while mining ok (see redis)? Do we need to
@@ -30,11 +30,13 @@ if __name__ == "__main__":
     nonce = 0   # TODO OPT: Initialize nonce to a random value instead?
     while True:
         h2 = h.copy()
-        h2.update(uitob(nonce))
+        h2.update(util.uitob(nonce))
         digest = h2.digest()
         if _check_difficulty(digest, DIFFICULTY):
             block.nonce = nonce
             block.current_hash = digest
+            r = util.get_db()
+            r.delete("blockchain:miner_pid")
             if ECHO:
                 print(block.dumps())
             else:

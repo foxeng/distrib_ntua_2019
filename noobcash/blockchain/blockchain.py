@@ -1,4 +1,4 @@
-import typing
+from typing import Set, Dict, List, Optional, Tuple
 import os
 import signal
 from noobcash.blockchain import wallet, block, util
@@ -40,7 +40,7 @@ def initialize(nodes: int, node_id: int, capacity: int, difficulty: int) -> None
     block.set_difficulty(difficulty)
 
 
-def get_block(block_id: typing.Optional[bytes] = None) -> Block:
+def get_block(block_id: Optional[bytes] = None) -> Block:
     """If block_id is None, return the last block in the chain"""
     r = util.get_db()
     if block_id is None:
@@ -49,7 +49,7 @@ def get_block(block_id: typing.Optional[bytes] = None) -> Block:
     return Block.loadb(blockb)
 
 
-def get_balance(node_id: typing.Optional[int] = None) -> float:
+def get_balance(node_id: Optional[int] = None) -> float:
     """If node_id is None, return current node's balance"""
     keyb = wallet.get_public_key(node_id).dumpb()
     r = util.get_db()
@@ -67,7 +67,7 @@ def generate_transaction(recipient_id: int, amount: float) -> bool:
     sender = wallet.get_public_key().dumpb()
     recipient = wallet.get_public_key(recipient_id).dumpb()
     r = util.get_db()
-    inputs: typing.List[TransactionInput] = []
+    inputs: List[TransactionInput] = []
     input_amount = 0.0
     for ib, ob in r.hgetall("blockchain:utxo-tx").items():
         o = TransactionOutput.loadb(ob)
@@ -95,16 +95,13 @@ def generate_transaction(recipient_id: int, amount: float) -> bool:
 
 def generate_genesis() -> None:
     """Generate the genesis block and initialize the chain with it"""
-    genesis = Block.genesis()
-    r = util.get_db()
-    r.hset("blockchain:blocks", genesis.current_hash, genesis.dumpb())
-    _set_last_block(genesis)
+    new_recv_block(Block.genesis())
 
 
 def dump() -> None:
     """Broadcast every block in the main branch"""
     r = util.get_db()
-    chain: typing.List[Block] = []
+    chain: List[Block] = []
     b = Block.loadb(r.hget("blockchain:blocks", r.get("blockchain:last_block")))
     while not b.is_genesis():
         chain.append(b)
@@ -128,7 +125,7 @@ def _check_for_new_block() -> None:
 
     last_block = Block.loadb(r.hget("blockchain:blocks", r.get("blockchain:last_block")))
     utxo_block = "blockchain:utxo-block:".encode() + last_block.current_hash
-    new_block_tx: typing.List[Transaction] = []
+    new_block_tx: List[Transaction] = []
     # NOTE: Since there are >= CAPACITY transactions in the pool, and we don't mind transaction
     # inter-dependence in the same block, a new block can be created, so this loop will terminate
     while True:
@@ -205,6 +202,42 @@ def new_recv_transaction(t: Transaction) -> bool:
     return True
 
 
+def _validate_block(b: Block) -> Optional[Tuple[Set[bytes], Dict[bytes, bytes]]]:
+    r = util.get_db()
+    referenced_txos: Set[bytes] = set()  # the utxos from UTXO-block spent in block
+    new_utxos: Dict[bytes, bytes] = {}
+    for t in b.transactions:
+        input_amount = 0.0
+        for i in t.inputs:
+            # Search for i in UTXO-block
+            ib = i.dumpb()
+            ob = r.hget("blockchain:utxo-block:".encode() + b.previous_hash, ib)
+            if ob is None:
+                # Not found in UTXO-block, search in new_utxos
+                ob = new_utxos.get(ib)
+                if ob is None:
+                    return None
+                del new_utxos[ib]
+            else:
+                # Avoid double-spending of a utxo from UTXO-block in the block
+                if ib in referenced_txos:
+                    return None
+                referenced_txos.add(ib)
+            o = TransactionOutput.loadb(ob)
+
+            if o.recipient != t.sender:
+                return None
+            input_amount += o.amount
+
+        if input_amount != sum(o.amount for o in t.outputs):
+            return None
+
+        new_utxos.update({TransactionInput(t.id, o.index).dumpb(): o.dumpb() \
+                for o in t.outputs})
+
+    return (referenced_txos, new_utxos)
+
+
 def new_recv_block(recv_block: Block) -> bool:
     # TODO: Make this atomic
     # TODO OPT: Reimplement this with a Lua script to use with redis EVAL
@@ -222,7 +255,6 @@ def new_recv_block(recv_block: Block) -> bool:
     # Handle the genesis block
     if recv_block.is_genesis():
         r.hset("blockchain:blocks", recv_block.current_hash, recv_block.dumpb())
-        r.set("blockchain:last_block", recv_block.current_hash)
         t = recv_block.transactions[0]
         o = t.outputs[0]
         ib = TransactionInput(t.id, o.index).dumpb()
@@ -230,6 +262,7 @@ def new_recv_block(recv_block: Block) -> bool:
         r.hset("blockchain:utxo-block:".encode() + recv_block.current_hash, ib, ob)
         r.hset("blockchain:utxo-tx", ib, ob)
         r.sadd("blockchain:main_branch", recv_block.current_hash)
+        _set_last_block(recv_block)
         return True
 
     # WP 11 Check if prev block (matching prev hash) is in main branch or side branches. If not, add
@@ -249,12 +282,19 @@ def new_recv_block(recv_block: Block) -> bool:
     #       branch; 2. block extends a side branch but does not add enough difficulty to make
     #       it become the new main branch; 3. block extends a side branch and makes it the new
     #       main branch.
-    last_block = r.hget("blockchain:blocks", r.get("blockchain:last_block"))
+    last_block = get_block()
     if recv_block.previous_hash == last_block.current_hash:
         # OK Case 1 (b.previous_hash == last_block):
+        """
+        tmp = _validate_block(recv_block)
+        if not tmp:
+            return False
+        referenced_txos, new_utxos = tmp
+        """
+        #"""
         # TODO OPT: This can be factored out to validate_block()
-        referenced_txos: typing.Set[bytes] = set()  # the utxos from UTXO-block spent in recv_block
-        new_utxos: typing.Dict[bytes, bytes] = {}
+        referenced_txos: Set[bytes] = set()  # the utxos from UTXO-block spent in recv_block
+        new_utxos: Dict[bytes, bytes] = {}
         # OK 1  For all but the coinbase transaction, apply the following:
         for t in recv_block.transactions:
             # OK 1  For each input, look in the main branch to find the referenced output
@@ -290,6 +330,7 @@ def new_recv_block(recv_block: Block) -> bool:
 
             new_utxos.update({TransactionInput(t.id, o.index).dumpb(): o.dumpb() \
                     for o in t.outputs})
+        #"""
 
         # OK 4  For each transaction, "Add to wallet if mine"
         # TODO OPT: This can be factored out to set_utxo_block()
@@ -305,7 +346,7 @@ def new_recv_block(recv_block: Block) -> bool:
         #       and their children, recursively
         tx_pool = {Transaction.loadb(tb) for tb in r.hvals("blockchain:tx_pool")}
         # TODO OPT: This can be factored out to rebuild_tx_pool()
-        conflicting_tx: typing.Set[Transaction] = set()
+        conflicting_tx: Set[Transaction] = set()
         new_conflicting_tx = {t for t in tx_pool if \
                 any(i.dumpb() in referenced_txos for i in t.inputs)}
         while new_conflicting_tx:
@@ -324,7 +365,7 @@ def new_recv_block(recv_block: Block) -> bool:
         utxo_tx = {TransactionInput.loadb(i): TransactionOutput.loadb(o) for i, o \
                 in r.hgetall("blockchain:utxo-block:".encode() + recv_block.current_hash).items()}
         while tx_pool:
-            tx_to_remove: typing.Set[Transaction] = set()
+            tx_to_remove: Set[Transaction] = set()
             for t in tx_pool:
                 if all(i in utxo_tx for i in t.inputs):
                     for i in t.inputs:
@@ -359,7 +400,7 @@ def new_recv_block(recv_block: Block) -> bool:
         # OK 2  Redefine the main branch to only go up to this fork block
         #       : Ascend from last_block up to the fork block, removing blocks from main_branch
         #       along the way
-        old_main_branch: typing.List[Block] = []    # the Blocks in the old main branch
+        old_main_branch: List[Block] = []    # the Blocks in the old main branch
         b = Block.loadb(r.hget("blockchain:blocks", last_block.current_hash))
         while b != fork_block:
             old_main_branch.append(b)
@@ -369,14 +410,22 @@ def new_recv_block(recv_block: Block) -> bool:
         # WP 3  For each block on the side branch, from the child of the fork block to the leaf, add
         #       to the main branch:
         # referenced_txos for all blocks in the old side branch
-        osb_referenced_txos: typing.Set[bytes] = set()
+        osb_referenced_txos: Set[bytes] = set()
         for b in old_side_branch:
             # OK 1  Do "branch" checks 3-11
             #       : Why? we did them when first receiving the block. What could have changed?
             # WP 2  For all the transactions:
+            """
+            tmp = _validate_block(b)
+            if not tmp:
+                # TODO: Undo any changes, delete invalid blocks and reject
+                raise NotImplementedError
+            referenced_txos, new_utxos = tmp
+            """
+            #"""
             # TODO OPT: This can be factored out to validate_block()
-            referenced_txos: typing.Set[bytes] = set()  # the utxos from UTXO-block spent in b
-            new_utxos: typing.Mapping[bytes, bytes] = {}
+            referenced_txos: Set[bytes] = set()  # the utxos from UTXO-block spent in b
+            new_utxos: Dict[bytes, bytes] = {}
             for t in b.transactions:
                 # WP 1  For each input, look in the main branch to find the referenced output
                 #       transaction. Reject if the output transaction is missing for any input.
@@ -418,6 +467,7 @@ def new_recv_block(recv_block: Block) -> bool:
 
                 new_utxos.update({TransactionInput(t.id, o.index).dumpb(): o.dumpb() for o \
                         in t.outputs})
+            #"""
 
             # NOTE: This actually adds more than we need, but it's harmless. We only need the UTXOs
             # from the fork block and up which are spent in the old side branch, but this also adds
@@ -464,7 +514,7 @@ def new_recv_block(recv_block: Block) -> bool:
         #       : delete all tx in the pool that have common inputs with the tx in the blocks in
         #       the old side branch and their children, recursively
         # TODO OPT: This can be factored out to rebuild_tx_pool()
-        conflicting_tx: typing.Set[Transaction] = set()
+        conflicting_tx: Set[Transaction] = set()
         new_conflicting_tx = {t for t in tx_pool if \
                 any(i.dumpb() in osb_referenced_txos for i in t.inputs)}
         while new_conflicting_tx:
@@ -483,7 +533,7 @@ def new_recv_block(recv_block: Block) -> bool:
         utxo_tx = {TransactionInput.loadb(i): TransactionOutput.loadb(o) for i, o \
                 in r.hgetall("blockchain:utxo-block:".encode() + recv_block.current_hash).items()}
         while tx_pool:
-            tx_to_remove: typing.Set[Transaction] = set()
+            tx_to_remove: Set[Transaction] = set()
             for t in tx_pool:
                 if all(i in utxo_tx for i in t.inputs):
                     for i in t.inputs:
