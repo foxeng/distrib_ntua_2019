@@ -129,8 +129,17 @@ def lstFinalise():
                     ipEntry = blockchainApi.getIp(i)
                     url = "http://" + ipEntry["ipAddr"] + ":" + str(ipEntry["port"] + "/finalisation")
                     r = requests.post(url, json= {"routingTable" : routingTable})  
-                blockchain.dump()               
+                return
+
+            def thread2Fn():
+                sleep(0.3)
+                print("Sending Blockchain")
+                blockchain.dump()
+                return()
+
             thread = Thread(target=threadFn)
+            thread.start()
+            thread = Thread(target=thread2Fn)
             thread.start()
         return ("<h1> PubKey from {} Noted</h1>".format(nodeId))
     else:

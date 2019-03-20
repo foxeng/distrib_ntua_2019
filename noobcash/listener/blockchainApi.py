@@ -27,7 +27,7 @@ def newReceivedBlock(blockString):
 def getBlock(blockId):
     if blockId is not None:
         blockId = blockId.encode('utf-8')
-    blockString = blockchain.get_block(blockId).dumps
+    blockString = blockchain.get_block(blockId).dumps()
     #print("getBlock called with blockId"  + str(blockId))
     #blockString = "This string contains the block in a string format of the block with id {}".format(blockId)
     return blockString
