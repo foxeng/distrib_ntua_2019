@@ -34,7 +34,7 @@ def _initialization():
         #util.set_node_id(nodeId)
         print(nodeId)
         #wallet.generate_wallet(nodeId)
-        pubKey = wallet.get_public_key()
+        pubKey = wallet.get_public_key().dumps()
         r = requests.post(node_0_url + "/finalisation", json = {"nodeId" : nodeId, "pubKey" : pubKey}) 
         #app.run()    
 
@@ -101,7 +101,7 @@ def lstInitialisation():
         entry = {newNodeId : entryValue}
         blockchainApi.setIp(entry)
         response = Response(json.dumps({"nodeId" : newNodeId}), status=200, mimetype="application/json")
-
+        return response
     else:
         return abort(403)       
 
@@ -109,7 +109,7 @@ def lstInitialisation():
 def lstFinalise():
     if config.IS_NODE_0 == True:
         nodeId = request.get_json()["nodeId"]
-        pubKey = request.get_json()["pubKey"]
+        pubKey = wallet.PrivateKey.loads(request.get_json()["pubKey"])
         wallet.set_public_key(nodeId, pubKey)
         if blockchainApi.getNodeCounter() == blockchainApi.getTotalNodes() - 1:
             def threadFn():
@@ -118,10 +118,10 @@ def lstFinalise():
                 for i in range(0, blockchainApi.getTotalNodes()):
                     print(i)
                     ipEntry = blockchainApi.getIp(i)
-                    pubKey = wallet.get_public_key(i)
+                    pubKey = wallet.get_public_key(i).dumps()
                     ipEntry.update({"pubKey" : pubKey})
                     routingTable.update({i : ipEntry})
-
+                    print(pubKey)
                 for i in range(1, blockchainApi.getTotalNodes()):
                     ipEntry = blockchainApi.getIp(i)
                     url = "http://" + ipEntry["ipAddr"] + ":" + str(ipEntry["port"] + "/finalisation")
@@ -136,7 +136,7 @@ def lstFinalise():
     else:
         routingTable = request.get_json()["routingTable"]
         for key, value in routingTable.items():
-            pubKey = value.pop("pubKey")
+            pubKey = wallet.PublicKey.loads(value.pop("pubKey"))
             blockchainApi.setIp({key: value})
             wallet.set_public_key(key,pubKey)
 
