@@ -7,10 +7,22 @@ import redis
 
 
 # Storage
-# - Node id             util:node_id            unsigned int
-# - Total nodes         util:total_node         unsigned int
-# - Registered nodes    util:registered_nodes   int
-# - Node URLs           util:node_urls          map [node_id: int] -> []
+# - Node id
+#       key: util:node_id
+#       value: unsigned int
+#       locking: no
+# - Total nodes
+#       key: util:total_node
+#       value: unsigned int
+#       locking: no
+# - Registered nodes
+#       key: util:registered_nodes
+#       value: int
+#       locking: no
+# - Node URLs
+#       key: util:node_urls
+#       value: map [node_id: int] -> [json-encoded data]
+#       locking: no
 
 
 # Use these to have a compact and cacheable json representation

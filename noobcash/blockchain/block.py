@@ -8,8 +8,14 @@ from noobcash.blockchain.util import uitob, btoui, stobin, bintos
 
 
 # Storage
-# - CAPACITY        block:capacity      unsigned int
-# - DIFFICULTY      block:difficulty    unsigned int
+# - CAPACITY
+#       key: block:capacity
+#       value: unsigned int
+#       locking: no
+# - DIFFICULTY
+#       key: block:difficulty
+#       value: unsigned int
+#       locking: no
 
 
 class Block:

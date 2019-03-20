@@ -169,7 +169,7 @@ def test_block():
 
 
 def test_blockchain():
-    blockchain.generate_genesis()
+    blockchain._generate_genesis()
     assert blockchain.get_block().is_genesis()
     assert blockchain.get_balance(0) == 100 * NODES
     assert blockchain.get_balance(1) == 0

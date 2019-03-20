@@ -10,8 +10,14 @@ from noobcash.blockchain import util
 
 
 # Storage
-# - Private key     wallet:privkey  PrivateKey
-# - Public keys     wallet:pubkeys  map [node_id: int] -> [PublicKey]
+# - Private key
+#       key: wallet:privkey
+#       value: PrivateKey
+#       locking: no
+# - Public keys
+#       key: wallet:pubkeys
+#       value: map [node_id: int] -> [PublicKey]
+#       locking: no
 
 
 class PublicKey:
