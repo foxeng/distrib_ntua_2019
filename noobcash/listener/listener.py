@@ -109,19 +109,19 @@ def lstInitialisation():
 def lstFinalise():
     if config.IS_NODE_0 == True:
         nodeId = request.get_json()["nodeId"]
-        pubKey = wallet.PrivateKey.loads(request.get_json()["pubKey"])
-        wallet.set_public_key(nodeId, pubKey)
+        tempKey = wallet.PublicKey
+        pubKeyStr = request.get_json()["pubKey"]
+        tempKey = tempKey.loads(pubKeyStr)
+        wallet.set_public_key(nodeId, tempKey)
         if blockchainApi.getNodeCounter() == blockchainApi.getTotalNodes() - 1:
             def threadFn():
                 sleep(0.1) #wait a bit to make sure that the listener is started
                 routingTable = {}
                 for i in range(0, blockchainApi.getTotalNodes()):
-                    print(i)
                     ipEntry = blockchainApi.getIp(i)
                     pubKey = wallet.get_public_key(i).dumps()
                     ipEntry.update({"pubKey" : pubKey})
                     routingTable.update({i : ipEntry})
-                    print(pubKey)
                 for i in range(1, blockchainApi.getTotalNodes()):
                     ipEntry = blockchainApi.getIp(i)
                     url = "http://" + ipEntry["ipAddr"] + ":" + str(ipEntry["port"] + "/finalisation")
@@ -139,5 +139,5 @@ def lstFinalise():
             pubKey = wallet.PublicKey.loads(value.pop("pubKey"))
             blockchainApi.setIp({key: value})
             wallet.set_public_key(key,pubKey)
-
+            print(pubKey)
         return("<h1> Routing Table Received </h1>")
