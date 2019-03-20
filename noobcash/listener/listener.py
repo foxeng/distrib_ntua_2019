@@ -20,18 +20,22 @@ def _initialization():
 
         print("I am Node 0")
         util.set_nodes(config.NUMBER_OF_NODES)
-        util.set_node_id(0)
-        wallet.generate_wallet(0)
-        blockchain.generate_genesis()
+        blockchain.initialize(config.NUMBER_OF_NODES, config.NODE_ID, config.CAPACITY, config.DIFFICULTY)
+        #util.set_node_id(0)
+        #wallet.generate_wallet(0)
+        #blockchain.generate_genesis()
         blockchainApi.setIp({ 0 :{'ipAddr': config.NODE_0_IP_ADDRESS, 'port': config.NODE_0_PORT}})
         #app.run()
     else:
         node_0_url = "http://" + config.NODE_0_IP_ADDRESS + ":" + config.NODE_0_PORT
         r = requests.get(node_0_url + "/initialisation", json= {"port" : environ.get('FLASK_RUN_PORT')})
         nodeId = r.json()["nodeId"]
-        util.set_node_id(nodeId)
+        blockchain.initialize(config.NUMBER_OF_NODES, nodeId, config.CAPACITY, config.DIFFICULTY)
+        #util.set_node_id(nodeId)
         print(nodeId)
-        wallet.generate_wallet(nodeId)
+        #wallet.generate_wallet(nodeId)
+        pubKey = wallet.get_public_key()
+        r = requests.post(node_0_url + "/finalisation", json = {"nodeId" : nodeId, "pubKey" : pubKey}) 
         #app.run()    
 
 
@@ -87,7 +91,7 @@ def lstHistory():
         response = Response(json.dumps({"block" : blockStr}), status=200, mimetype="application/json")
         return response
 
-@app.route("/initialisation", methods=['GET', 'POST'])
+@app.route("/initialisation", methods=['GET'])
 def lstInitialisation():
     if config.IS_NODE_0 == True:
         newNodeId = blockchainApi.incNodeCounter()
@@ -96,6 +100,17 @@ def lstInitialisation():
         entryValue = {"ipAddr": ipAddr, "port" : port}
         entry = {newNodeId : entryValue}
         blockchainApi.setIp(entry)
+        response = Response(json.dumps({"nodeId" : newNodeId}), status=200, mimetype="application/json")
+
+    else:
+        return abort(403)       
+
+@app.route("/finalisation", methods = ['POST'])
+def lstFinalise():
+    if config.IS_NODE_0 == True:
+        nodeId = request.get_json()["nodeId"]
+        pubKey = request.get_json()["pubKey"]
+        wallet.set_public_key(nodeId, pubKey)
         if blockchainApi.getNodeCounter() == blockchainApi.getTotalNodes() - 1:
             def threadFn():
                 sleep(0.1) #wait a bit to make sure that the listener is started
@@ -103,24 +118,26 @@ def lstInitialisation():
                 for i in range(0, blockchainApi.getTotalNodes()):
                     print(i)
                     ipEntry = blockchainApi.getIp(i)
+                    pubKey = wallet.get_public_key(i)
+                    ipEntry.update({"pubKey" : pubKey})
                     routingTable.update({i : ipEntry})
 
                 for i in range(1, blockchainApi.getTotalNodes()):
                     ipEntry = blockchainApi.getIp(i)
-                    url = "http://" + ipEntry["ipAddr"] + ":" + str(ipEntry["port"] + "/initialisation")
+                    url = "http://" + ipEntry["ipAddr"] + ":" + str(ipEntry["port"] + "/finalisation")
                     r = requests.post(url, json= {"routingTable" : routingTable})  
                 
                 for i in range (1, blockchainApi.getTotalNodes()):
                     blockchainApi.generateTransaction(i, 100.0)
-                return 
-                
+                return                
             thread = Thread(target=threadFn)
             thread.start()
-        response = Response(json.dumps({"nodeId" : newNodeId}), status=200, mimetype="application/json")
-        return response
+        return ("<h1> PubKey from {} Noted</h1>".format(nodeId))
     else:
         routingTable = request.get_json()["routingTable"]
         for key, value in routingTable.items():
+            pubKey = value.pop("pubKey")
             blockchainApi.setIp({key: value})
-        
-        return("<h1> Routing Table Received <\h1>")
+            wallet.set_public_key(key,pubKey)
+
+        return("<h1> Routing Table Received </h1>")
