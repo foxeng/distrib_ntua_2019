@@ -135,12 +135,14 @@ def lstFinalise():
                 sleep(0.3)
                 print("Sending Blockchain")
                 blockchain.dump()
-                return()
+                print("Blockchain Sent")
+                return
 
-            thread = Thread(target=threadFn)
-            thread.start()
-            thread = Thread(target=thread2Fn)
-            thread.start()
+            thread1 = Thread(target=threadFn)
+            thread1.start()
+            thread2 = Thread(target=thread2Fn)
+            thread2.start()
+            
         return ("<h1> PubKey from {} Noted</h1>".format(nodeId))
     else:
         routingTable = request.get_json()["routingTable"]
