@@ -4,6 +4,7 @@ import signal
 from noobcash.blockchain import wallet, block, util
 from noobcash.blockchain.block import Block
 from noobcash.blockchain.transaction import Transaction, TransactionInput, TransactionOutput
+from noobcash.chatter import chatter
 
 
 # Storage
@@ -121,8 +122,7 @@ def dump() -> None: # TODO OPT: Return something (eg the list of the blocks dump
         b = get_block(b.previous_hash)
 
     for b in reversed(chain):
-        # TODO: Broadcast b
-        raise NotImplementedError
+        chatter.broadcast_block(b, util.get_peer_ids())
 
 
 def generate_transaction(recipient_id: int, amount: float) -> bool:
@@ -151,11 +151,14 @@ def generate_transaction(recipient_id: int, amount: float) -> bool:
                     r.hdel("blockchain:utxo-tx", *(i.dumpb() for i in t.inputs))
                     r.hmset("blockchain:utxo-tx", {TransactionInput(t.id, o.index).dumpb(): \
                                                        o.dumpb() for o in t.outputs})
-                    _check_for_new_block()
+                    break
+        else:
+            # Not enough UTXOs
+            return False
 
-                    # TODO: Broadcast t. Unlock first?
-                    return True
-        return False
+    _check_for_new_block()
+    chatter.broadcast_transaction(t, util.get_peer_ids())
+    return True
 
 
 def _check_for_new_block() -> None:
@@ -297,7 +300,7 @@ def _validate_block_unlocked(r, b: Block) -> Optional[Tuple[Set[bytes], Dict[byt
     return (referenced_txos, new_utxos)
 
 
-def new_recv_block(recv_block: Block) -> bool:
+def new_recv_block(recv_block: Block, sender_id: Optional[int] = None) -> bool:
     if not recv_block.verify():
         return False
 
@@ -329,15 +332,19 @@ def new_recv_block(recv_block: Block) -> bool:
             _set_last_block_unlocked(r, recv_block)
             return True
 
-        # WP 11 Check if prev block (matching prev hash) is in main branch or side branches. If not,
+        # OK 11 Check if prev block (matching prev hash) is in main branch or side branches. If not,
         #       add this to orphan blocks, then query peer we got this from for 1st missing orphan
         #       block in prev chain; done with block
         prev_blockb = r.hget("blockchain:blocks", recv_block.previous_hash)
         if prev_blockb is None:
             r.sadd("blockchain:orphan_blocks:".encode() + recv_block.previous_hash,
                    recv_block.dumpb())
-            # TODO: Request b.previous_hash (from everyone or from the one we got this from?).
-            # Unlock first?
+            # TODO OPT: Unlock before requesting the block (it could take some time, although
+            # the response is asynchronous of course
+            # TODO OPT: Only ask the node we got this from, not everyone to avoid the flood of
+            # incoming blocks later
+            chatter.get_blockid(recv_block.previous_hash,
+                                [sender_id] if sender_id is not None else util.get_peer_ids())
             return False
 
         prev_block = Block.loadb(prev_blockb)

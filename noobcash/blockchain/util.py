@@ -107,3 +107,9 @@ def get_ip(node_id: int) -> typing.Mapping[str, str]:   # TODO OPT: This can sup
 def set_ip(ips: typing.Mapping[int, typing.Mapping[str, str]]) -> None:
     r = get_db()
     r.hmset("util:node_urls", {node_id: dumps(url).encode() for node_id, url in ips.items()})
+
+def get_peer_ids() -> typing.List[int]:
+    """Return the ids of all nodes except ours"""
+    peer_ids = list(range(get_nodes()))
+    peer_ids.remove(get_node_id())
+    return peer_ids
