@@ -1,4 +1,5 @@
 from typing import Set, Dict, List, Optional, Tuple
+import logging
 import os
 import signal
 from noobcash.blockchain import wallet, block, util
@@ -62,6 +63,12 @@ def initialize(nodes: int, node_id: int, capacity: int, difficulty: int) -> None
     # TODO OPT: Somehow check if initialization has already happened? But how to
     # separate initialization between different runs of the application?
     # TODO OPT: Need to do anything else?
+    log_fmt = "[%(levelname)s] %(relativeCreated)d %(module)s:%(funcName)s:%(lineno)d: %(message)s"
+    logging.basicConfig(filename=os.path.dirname(__file__) + "/blockchain.log",
+                        filemode="w",           # overwrite last log
+                        format=log_fmt,
+                        level=logging.DEBUG)    # log messages of all levels
+
     r = util.get_db()
     r.flushdb()
 
@@ -229,9 +236,9 @@ def _set_last_block_unlocked(r, last_block: Block) -> None:
 
     # Check if we were mining. If so, kill the miner
     with r.lock("blockchain:miner_pid:lock"):
-        miner_pid = r.get("blockchain:miner_pid")
-        if miner_pid is not None:
-            os.kill(miner_pid, signal.SIGTERM)
+        miner_pidb = r.get("blockchain:miner_pid")
+        if miner_pidb is not None:
+            os.kill(int(miner_pidb), signal.SIGTERM)
             r.delete("blockchain:miner_pid")
 
 
