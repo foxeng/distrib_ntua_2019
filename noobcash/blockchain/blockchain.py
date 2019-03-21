@@ -1,5 +1,4 @@
 from typing import Set, Dict, List, Optional, Tuple
-import logging
 import os
 import signal
 from noobcash.blockchain import wallet, block, util
@@ -63,10 +62,6 @@ def initialize(nodes: int, node_id: int, capacity: int, difficulty: int) -> None
     # TODO OPT: Somehow check if initialization has already happened? But how to
     # separate initialization between different runs of the application?
     # TODO OPT: Need to do anything else?
-    logging.basicConfig(filename="blockchain.log",  # which directory?
-                        filemode="w",               # or prefer to append?
-                        format="",
-                        )
     r = util.get_db()
     r.flushdb()
 
