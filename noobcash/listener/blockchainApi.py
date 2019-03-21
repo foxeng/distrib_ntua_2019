@@ -8,13 +8,13 @@ def newReceivedTransaction(transJson):
 
 
 def newCreatedTransaction(dst, value):
-    trans = transaction.Transaction(dst.encode('utf-8'), value, None)
-    blockchain.new_recv_transaction(trans)
+    #trans = transaction.Transaction(dst.encode('utf-8'), value, None)
+    blockchain.generate_transaction(int(dst), (float)(value));
     # print("newCreatedTransaction Called with dst: {} & value {}:".format(dst, value))
 
 
-def generateTransaction(node_id, value):
-    blockchain.generate_transaction(node_id, value)                
+def generateTransaction(node_id, value, flag=False):
+    blockchain.generate_transaction(node_id, value, flag)                
 
 
 def newReceivedBlock(blockString):
@@ -26,7 +26,7 @@ def newReceivedBlock(blockString):
 
 def getBlock(blockId):
     if blockId is not None:
-        blockId = blockId.encode('utf-8')
+        blockId = util.stobin(blockId)#blockId.encode('utf-8')
     blockString = blockchain.get_block(blockId).dumps()
     #print("getBlock called with blockId"  + str(blockId))
     #blockString = "This string contains the block in a string format of the block with id {}".format(blockId)

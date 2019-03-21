@@ -1,9 +1,11 @@
 from typing import Set, Dict, List, Optional, Tuple
+import logging
 import os
 import signal
 from noobcash.blockchain import wallet, block, util
 from noobcash.blockchain.block import Block
 from noobcash.blockchain.transaction import Transaction, TransactionInput, TransactionOutput
+from noobcash.chatter import chatter
 
 
 # Storage
@@ -39,9 +41,9 @@ from noobcash.blockchain.transaction import Transaction, TransactionInput, Trans
 #       key: blockchain:utxo-tx
 #       value: map [input: TransactionInput] -> [TransactionOutput]
 #       locking: yes
+
 # NOTE: Locks should always be acquired in the order specified above (it's
 # alphabetical) to avoid deadlocks
-
 # NOTE: We don't store orphan transactions (we reject them instead). They are
 # not strictly necessary: a transaction is orphan if it reaches us before one it
 # depends on. If at least one node receives the two in the right order, they
@@ -50,17 +52,32 @@ from noobcash.blockchain.transaction import Transaction, TransactionInput, Trans
 # after a while. There shouldn't be any problem in our scale.
 
 
+# TODO: Allow connecting to different redis dbs depending on the configuration
 # TODO OPT: In terrible need of a refactor
 # TODO OPT: Define custom exceptions and use them
 # TODO OPT: Get rid of the locks. Look into redis transactions or Lua scripting
 
 
 def initialize(nodes: int, node_id: int, capacity: int, difficulty: int) -> None:
-    # NOTE: Totally undefined behaviour if called more than once (all hell breaks loose)
+    # NOTE: Totally undefined behaviour if called more than once (all hell
+    # breaks loose)
+    # TODO OPT: Somehow check if initialization has already happened? But how to
+    # separate initialization between different runs of the application?
     # TODO OPT: Need to do anything else?
+    log_fmt = "[%(levelname)s] %(relativeCreated)d %(module)s:%(funcName)s:%(lineno)d: %(message)s"
+    logging.basicConfig(filename=os.path.dirname(__file__) + "/blockchain.log",
+                        filemode="w",           # overwrite last log
+                        format=log_fmt,
+                        level=logging.DEBUG)    # log messages of all levels
+
     r = util.get_db()
     r.flushdb()
 
+    logging.info("Initializing with %d nodes, node id %d, capacity %d, difficulty %d",
+                 nodes,
+                 node_id,
+                 capacity,
+                 difficulty)
     util.set_nodes(nodes)
     wallet.generate_wallet(node_id)
     if node_id == 0:
@@ -71,6 +88,7 @@ def initialize(nodes: int, node_id: int, capacity: int, difficulty: int) -> None
 
 def _generate_genesis() -> None:
     """Generate the genesis block and initialize the chain with it"""
+    logging.debug("Generating the genesis block")
     new_recv_block(Block.genesis())
 
 
@@ -79,24 +97,32 @@ def get_block(block_id: Optional[bytes] = None) -> Optional[Block]:
     This doesn't use any locks"""
     if block_id is not None and not isinstance(block_id, bytes):
         raise TypeError
+    if block_id is None:
+        logging.debug("Last block requested")
+    else:
+        logging.debug("Block %s requested", util.bintos(block_id))
 
     r = util.get_db()
     if block_id is None:
         block_id = r.get("blockchain:last_block")
         if block_id is None:
             # The blockchain is empty
+            logging.error("Blockchain is empty")
             return None
 
     blockb = r.hget("blockchain:blocks", block_id)
     if blockb is None:
         # Requested block not found
+        logging.error("Block %s not found", util.bintos(block_id))
         return None
 
+    logging.debug("Block %s retrieved", util.bintos(block_id))
     return Block.loadb(blockb)
 
 
 def get_balance(node_id: Optional[int] = None) -> float:
     """If node_id is None, return current node's balance"""
+    logging.debug("Balance requested for node %s", "local" if node_id is None else str(node_id))
     keyb = wallet.get_public_key(node_id).dumpb()
     r = util.get_db()
     # NOTE: No need to lock
@@ -107,11 +133,14 @@ def get_balance(node_id: Optional[int] = None) -> float:
         out = TransactionOutput.loadb(outb)
         if out.recipient == keyb:
             balance += out.amount
+    logging.debug("Balance of node %s: %f", "local" if node_id is None else str(node_id), balance)
     return balance
 
 
-def dump() -> None: # TODO OPT: Return something (eg the list of the blocks dumped)?
-    """Broadcast every block in the main branch"""
+def dump(mute: bool = False) -> List[Block]:
+    """Broadcast every block in the main branch (if mute is False). Also return
+    a list with these blocks (regardless of mute)."""
+    logging.debug("Dump requested")
     chain: List[Block] = []
     # NOTE: No need to lock the blocks because once a block is validated, it is
     # never deleted and all the blocks in the main branch are validated
@@ -119,15 +148,22 @@ def dump() -> None: # TODO OPT: Return something (eg the list of the blocks dump
     while b is not None:
         chain.append(b)
         b = get_block(b.previous_hash)
+    chain.reverse()
 
-    for b in reversed(chain):
-        # TODO: Broadcast b
-        raise NotImplementedError
+    if not mute:
+        logging.debug("Broadcasting blocks")
+        for b in chain:
+            chatter.broadcast_block(b, util.get_peer_ids())
+
+    logging.debug("%d blocks in the chain", len(chain))
+    return chain
 
 
-def generate_transaction(recipient_id: int, amount: float) -> bool:
+def generate_transaction(recipient_id: int, amount: float, mute: bool = False) -> bool:
     """If possible (there are enough UTXOs) generate a new transaction giving
-    amount NBC to recipient and the change back to us."""
+    amount NBC to recipient and the change back to us. If mute is True don't
+    broadcast it."""
+    logging.debug("Transaction requested: %f NBC to node %d", amount, recipient_id)
     sender = wallet.get_public_key().dumpb()
     recipient = wallet.get_public_key(recipient_id).dumpb()
     r = util.get_db()
@@ -151,11 +187,18 @@ def generate_transaction(recipient_id: int, amount: float) -> bool:
                     r.hdel("blockchain:utxo-tx", *(i.dumpb() for i in t.inputs))
                     r.hmset("blockchain:utxo-tx", {TransactionInput(t.id, o.index).dumpb(): \
                                                        o.dumpb() for o in t.outputs})
-                    _check_for_new_block()
+                    break
+        else:
+            # Not enough UTXOs
+            logging.error("Cannot send %f NBC to node %d (not enough coins)", amount, recipient_id)
+            return False
 
-                    # TODO: Broadcast t. Unlock first?
-                    return True
-        return False
+    logging.debug("Generated transaction %s", util.bintos(t.id))
+    _check_for_new_block()
+    if not mute:
+        logging.debug("Broadcasting transaction %s", util.bintos(t.id))
+        chatter.broadcast_transaction(t, util.get_peer_ids())
+    return True
 
 
 def _check_for_new_block() -> None:
@@ -163,20 +206,17 @@ def _check_for_new_block() -> None:
     block (ie transactions in the pool with all their inputs in
     UTXO-block[last_block]. If so, start mining a new block.
     Should be called with no locks held."""
+    logging.debug("Checking for new block")
     CAPACITY = block.get_capacity()
 
     r = util.get_db()
-    # NOTE: If a miner is running, we expect it to add a new block, so we
-    # abort. If it succeeds, this function will be called again by
-    # new_recv_block(). If it fails (another valid block is received) this
-    # will again be called by new_rev_block()
-
     with r.lock("blockchain:last_block:lock"), \
          r.lock("blockchain:miner_pid:lock"), \
          r.lock("blockchain:tx_pool:lock"), \
          r.lock("blockchain:utxo-block:lock"):
         tx_pool = {Transaction.loadb(tb) for tb in r.hvals("blockchain:tx_pool")}
         if len(tx_pool) < CAPACITY:
+            logging.debug("Cannot create new block (not enough transactions)")
             return
 
         last_block = get_block()
@@ -202,9 +242,14 @@ def _check_for_new_block() -> None:
                         # abort. If mining succeeds, this function will be called again by
                         # new_recv_block(). If it fails (another valid block is received) this
                         # will again be called by new_rev_block()
-                        if r.get("blockchain:miner_pid") is None:
+                        miner_pidb = r.get("blockchain:miner_pid")
+                        if miner_pidb is None:
                             miner_pid = new_block.finalize()
-                            r.set("blockchain:miner_pid", miner_pid)
+                            r.set("blockchain:miner_pid", util.uitob(miner_pid))
+                            logging.debug("Miner started with PID %d", miner_pid)
+                        else:
+                            logging.debug("Miner already running with PID %d",
+                                          util.btoui(miner_pidb))
                         return
             tx_pool.difference_update(new_block_tx)
 
@@ -212,18 +257,23 @@ def _check_for_new_block() -> None:
 def _set_last_block_unlocked(r, last_block: Block) -> None:
     """Should be called with the last_block lock held. Takes care of locking
     (and unlocking) the miner_pid lock"""
+    logging.debug("Setting last block to %s", util.bintos(last_block.current_hash))
     r.set("blockchain:last_block", last_block.current_hash)
 
     # Check if we were mining. If so, kill the miner
     with r.lock("blockchain:miner_pid:lock"):
-        miner_pid = r.get("blockchain:miner_pid")
-        if miner_pid is not None:
+        miner_pidb = r.get("blockchain:miner_pid")
+        if miner_pidb is not None:
+            miner_pid = util.btoui(miner_pidb)
             os.kill(miner_pid, signal.SIGTERM)
             r.delete("blockchain:miner_pid")
+            logging.debug("Killed the miner with PID %d", miner_pid)
 
 
 def new_recv_transaction(t: Transaction) -> bool:
+    logging.debug("Received transaction %s", util.bintos(t.id))
     if not t.verify():
+        logging.error("Transaction %s rejected (failed verification)", util.bintos(t.id))
         return False
 
     r = util.get_db()
@@ -235,6 +285,7 @@ def new_recv_transaction(t: Transaction) -> bool:
         # done against UTXO-transaction
         prev_outb = r.hmget("blockchain:utxo-tx", *referenced_txos)
         if any(i is None for i in prev_outb):
+            logging.error("Transaction %s rejected (UTXO not found)", util.bintos(t.id))
             return False
         prev_outputs = [TransactionOutput.loadb(outb) for outb in prev_outb]
 
@@ -242,10 +293,13 @@ def new_recv_transaction(t: Transaction) -> bool:
         input_amount = sum(i.amount for i in prev_outputs)
         output_amount = sum(o.amount for o in t.outputs)
         if input_amount != output_amount:
+            logging.error("Transaction %s rejected (input amount != output amount)",
+                          util.bintos(t.id))
             return False
 
         # OK 16 Verify the scriptPubKey accepts for each input; reject if any are bad
         if any(o.recipient != t.sender for o in prev_outputs):
+            logging.error("Transaction %s rejected (spending another's UTXO)", util.bintos(t.id))
             return False
 
         # OK 17 Add to transaction pool[7]
@@ -257,12 +311,14 @@ def new_recv_transaction(t: Transaction) -> bool:
         new_utxos = {TransactionInput(t.id, o.index).dumpb(): o.dumpb() for o in t.outputs}
         r.hmset("blockchain:utxo-tx", new_utxos)
 
+    logging.debug("Transaction %s accepted", util.bintos(t.id))
     _check_for_new_block()
     return True
 
 
 def _validate_block_unlocked(r, b: Block) -> Optional[Tuple[Set[bytes], Dict[bytes, bytes]]]:
     """Should be called with the utxo-block lock held"""
+    # TODO: Logging
     referenced_txos: Set[bytes] = set()  # the utxos from UTXO-block spent in block
     new_utxos: Dict[bytes, bytes] = {}
     for t in b.transactions:
@@ -275,20 +331,27 @@ def _validate_block_unlocked(r, b: Block) -> Optional[Tuple[Set[bytes], Dict[byt
                 # Not found in UTXO-block, search in new_utxos
                 ob = new_utxos.get(ib)
                 if ob is None:
+                    logging.error("Block %s rejected (UTXO not found)", util.bintos(b.current_hash))
                     return None
                 del new_utxos[ib]
             else:
                 # Avoid double-spending of a utxo from UTXO-block in the block
                 if ib in referenced_txos:
+                    logging.error("Block %s rejected (double spending in the block)",
+                                  util.bintos(b.current_hash))
                     return None
                 referenced_txos.add(ib)
             o = TransactionOutput.loadb(ob)
 
             if o.recipient != t.sender:
+                logging.error("Block %s rejected (spending another's UTXO)",
+                              util.bintos(b.current_hash))
                 return None
             input_amount += o.amount
 
         if input_amount != sum(o.amount for o in t.outputs):
+            logging.error("Block %s rejected (input amount != output amount)",
+                          util.bintos(b.current_hash))
             return None
 
         new_utxos.update({TransactionInput(t.id, o.index).dumpb(): o.dumpb() \
@@ -297,8 +360,11 @@ def _validate_block_unlocked(r, b: Block) -> Optional[Tuple[Set[bytes], Dict[byt
     return (referenced_txos, new_utxos)
 
 
-def new_recv_block(recv_block: Block) -> bool:
+def new_recv_block(recv_block: Block, sender_id: Optional[int] = None, mute: bool = False) -> bool:
+    logging.debug("Received block %s", util.bintos(recv_block.current_hash))
     if not recv_block.verify():
+        logging.error("Block %s rejected (failed verification)",
+                      util.bintos(recv_block.current_hash))
         return False
 
     r = util.get_db()
@@ -314,6 +380,8 @@ def new_recv_block(recv_block: Block) -> bool:
         if r.hexists("blockchain:blocks", recv_block.current_hash) or \
            r.sismember("blockchain:orphan_blocks:".encode() + recv_block.previous_hash,
                        recv_block.dumpb()):
+            logging.error("Block %s rejected (already exists)",
+                          util.bintos(recv_block.current_hash))
             return False
 
         # Handle the genesis block
@@ -327,21 +395,31 @@ def new_recv_block(recv_block: Block) -> bool:
             r.hset("blockchain:utxo-tx", ib, ob)
             r.sadd("blockchain:main_branch", recv_block.current_hash)
             _set_last_block_unlocked(r, recv_block)
+            logging.debug("Genesis block accepted")
             return True
 
-        # WP 11 Check if prev block (matching prev hash) is in main branch or side branches. If not,
+        # OK 11 Check if prev block (matching prev hash) is in main branch or side branches. If not,
         #       add this to orphan blocks, then query peer we got this from for 1st missing orphan
         #       block in prev chain; done with block
         prev_blockb = r.hget("blockchain:blocks", recv_block.previous_hash)
         if prev_blockb is None:
+            logging.error("Block %s is orphan", util.bintos(recv_block.current_hash))
             r.sadd("blockchain:orphan_blocks:".encode() + recv_block.previous_hash,
                    recv_block.dumpb())
-            # TODO: Request b.previous_hash (from everyone or from the one we got this from?).
-            # Unlock first?
+            # TODO OPT: Unlock before requesting the block (it could take some time, although
+            # the response is asynchronous of course
+            if not mute:
+                logging.debug("Requesting block %s", util.bintos(recv_block.previous_hash))
+                # TODO OPT: Only ask the node we got this from, not everyone, to
+                # avoid the flood of incoming blocks later
+                chatter.get_blockid(recv_block.previous_hash,
+                                    [sender_id] if sender_id is not None else util.get_peer_ids())
             return False
 
         prev_block = Block.loadb(prev_blockb)
+        logging.debug("Previous block %s", util.bintos(prev_block.current_hash))
         if recv_block.index != prev_block.index + 1:
+            logging.error("Block %s rejected (wrong index)", util.bintos(recv_block.current_hash))
             return False
 
         # OK 15 Add block into the tree. There are three cases: 1. block further extends the main
@@ -351,6 +429,7 @@ def new_recv_block(recv_block: Block) -> bool:
         last_block = get_block()
         if recv_block.previous_hash == last_block.current_hash:
             # OK Case 1 (b.previous_hash == last_block):
+            logging.debug("Block %s the extends main branch", util.bintos(recv_block.current_hash))
             #"""
             txos = _validate_block_unlocked(r, recv_block)
             if txos is None:
@@ -423,7 +502,7 @@ def new_recv_block(recv_block: Block) -> bool:
                 new_conflicting_tx = {t for t in tx_pool if \
                         any(i.transaction_id in new_conflicting_tx_ids for i in t.inputs)}
             if conflicting_tx:
-                r.hdel("blockchain:tx_pool", *conflicting_tx)
+                r.hdel("blockchain:tx_pool", *(ct.id for ct in conflicting_tx))
 
             # TODO OPT: This can be factored out to rebuild_utxo_tx()
             # Rebuild UTXO-tx: re-initialize it as a copy of UTXO-block[recv_block] and simulate
@@ -449,15 +528,20 @@ def new_recv_block(recv_block: Block) -> bool:
             r.sadd("blockchain:main_branch", recv_block.current_hash)
 
             _set_last_block_unlocked(r, recv_block)
+            logging.debug("Block %s accepted", util.bintos(recv_block.current_hash))
         elif recv_block.index <= last_block.index:
             # OK Case 2 (b.previous_hash != last_block && b.index <= last_block.index)
             # : Add it without doing any validation because validating this now would require a lot
             # of work (actually simulating adding this to its prev as if extending the main branch).
+            logging.debug("Block %s the extends a side branch (not changing main)",
+                          util.bintos(recv_block.current_hash))
             r.hset("blockchain:blocks", recv_block.current_hash, recv_block.dumpb())
         else:
             # OK Case 3 (b.previous_hash != last_block && b.index > last_block.index)
             # OK 1  Find the fork block on the main branch which this side branch forks off of
             #       : Ascend the side branch, the fork block is the first to be in the main branch
+            logging.debug("Block %s the extends a side branch (changing main)",
+                          util.bintos(recv_block.current_hash))
             old_side_branch = [recv_block]    # the Blocks in the old side branch
             fork_block = Block.loadb(r.hget("blockchain:blocks", recv_block.previous_hash))
             while not r.sismember("blockchain:main_branch", fork_block.current_hash):
@@ -472,6 +556,7 @@ def new_recv_block(recv_block: Block) -> bool:
                 old_main_branch.append(b)
                 b = Block.loadb(r.hget("blockchain:blocks", b.previous_hash))
             old_main_branch.reverse()   # starting from the child of the fork block
+            logging.debug("Fork block %s", util.bintos(fork_block.current_hash))
             # OK 3  For each block on the side branch, from the child of the fork block to the leaf,
             #       add to the main branch:
             # referenced_txos for all blocks in the old side branch
@@ -585,7 +670,7 @@ def new_recv_block(recv_block: Block) -> bool:
                 new_conflicting_tx = {t for t in tx_pool if \
                         any(i.transaction_id in new_conflicting_tx_ids for i in t.inputs)}
             if conflicting_tx:
-                r.hdel("blockchain:tx_pool", *conflicting_tx)
+                r.hdel("blockchain:tx_pool", *(ct.id for ct in conflicting_tx))
 
             # TODO OPT: This can be factored out to rebuild_utxo_tx()
             # Rebuild UTXO-tx: reinitialize it as a copy of UTXO-block[recv_block] and simulate
@@ -613,6 +698,7 @@ def new_recv_block(recv_block: Block) -> bool:
                 r.sadd("blockchain:main_branch", b.current_hash)
 
             _set_last_block_unlocked(r, recv_block)
+            logging.debug("Block %s accepted", util.bintos(recv_block.current_hash))
 
         orphans = [Block.loadb(orphb) for orphb in \
                        r.smembers("blockchain:orphan_blocks:".encode() + recv_block.current_hash)]

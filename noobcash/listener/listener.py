@@ -44,9 +44,10 @@ def welcome():
     return("<h1> We are rolling </h1>")
 
 #listener = Flask(__name__)
-@app.route("/transaction", methods=['POST'])
+@app.route("/transaction", methods=['GET', 'POST'])
 def lstTransaction():
-    if request.remote_addr == LOCALHOST:
+    #if request.remote_addr == LOCALHOST:
+    if request.method == 'GET':
         dst = (request.get_json()["dst"])
         value = float(request.get_json()["amount"])
         blockchainApi.newCreatedTransaction(dst, value)
@@ -64,7 +65,7 @@ def lstNewBlock():
         blockchainApi.newReceivedBlock(blockData)
         return "<h1> Response to be implemented </h1>"
     elif request.method == 'GET':
-        blockId = request.get_json()["blockId"]
+        blockId = request.get_json()["block"]
         blockStr = blockchainApi.getBlock(blockId)
         response = Response(json.dumps({"block" : blockStr}), status=200, mimetype="application/json")
         return response
@@ -115,7 +116,7 @@ def lstFinalise():
         pubKeyStr = request.get_json()["pubKey"]
         tempKey = tempKey.loads(pubKeyStr)
         wallet.set_public_key(nodeId, tempKey)
-        blockchainApi.generateTransaction(nodeId, 100.0)
+        #blockchainApi.generateTransaction(nodeId, 100.0, True)
         if blockchainApi.getNodeCounter() == blockchainApi.getTotalNodes() - 1:
             def threadFn():
                 sleep(0.1) #wait a bit to make sure that the listener is started
@@ -138,11 +139,17 @@ def lstFinalise():
                 print("Blockchain Sent")
                 return
 
+            def thread3Fn():
+                sleep(0.5)
+                for i in range(1, blockchainApi.getTotalNodes()):
+                    blockchainApi.generateTransaction(i, 100.0)
+                return
             thread1 = Thread(target=threadFn)
             thread1.start()
             thread2 = Thread(target=thread2Fn)
             thread2.start()
-            
+            thread3 = Thread(target=thread3Fn)
+            thread3.start()
         return ("<h1> PubKey from {} Noted</h1>".format(nodeId))
     else:
         routingTable = request.get_json()["routingTable"]

@@ -27,6 +27,11 @@ def test_util():
 
     util.set_nodes(NODES)
     assert util.get_nodes() == NODES
+    util.set_node_id(NODE_ID)
+    assert util.get_node_id() == NODE_ID
+    peer_ids = util.get_peer_ids()
+    assert len(peer_ids) == NODES - 1
+    assert NODE_ID not in peer_ids
 
 
 def test_wallet():
