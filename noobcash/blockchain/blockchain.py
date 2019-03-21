@@ -248,7 +248,8 @@ def _check_for_new_block() -> None:
                             r.set("blockchain:miner_pid", util.uitob(miner_pid))
                             logging.debug("Miner started with PID %d", miner_pid)
                         else:
-                            logging.debug("Miner already running with PID %d", util.btoui(miner_pidb))
+                            logging.debug("Miner already running with PID %d",
+                                          util.btoui(miner_pidb))
                         return
             tx_pool.difference_update(new_block_tx)
 
@@ -330,20 +331,27 @@ def _validate_block_unlocked(r, b: Block) -> Optional[Tuple[Set[bytes], Dict[byt
                 # Not found in UTXO-block, search in new_utxos
                 ob = new_utxos.get(ib)
                 if ob is None:
+                    logging.error("Block %s rejected (UTXO not found)", util.bintos(b.current_hash))
                     return None
                 del new_utxos[ib]
             else:
                 # Avoid double-spending of a utxo from UTXO-block in the block
                 if ib in referenced_txos:
+                    logging.error("Block %s rejected (double spending in the block)",
+                                  util.bintos(b.current_hash))
                     return None
                 referenced_txos.add(ib)
             o = TransactionOutput.loadb(ob)
 
             if o.recipient != t.sender:
+                logging.error("Block %s rejected (spending another's UTXO)",
+                              util.bintos(b.current_hash))
                 return None
             input_amount += o.amount
 
         if input_amount != sum(o.amount for o in t.outputs):
+            logging.error("Block %s rejected (input amount != output amount)",
+                          util.bintos(b.current_hash))
             return None
 
         new_utxos.update({TransactionInput(t.id, o.index).dumpb(): o.dumpb() \
@@ -353,8 +361,10 @@ def _validate_block_unlocked(r, b: Block) -> Optional[Tuple[Set[bytes], Dict[byt
 
 
 def new_recv_block(recv_block: Block, sender_id: Optional[int] = None, mute: bool = False) -> bool:
-    # TODO: Logging
+    logging.debug("Received block %s", util.bintos(recv_block.current_hash))
     if not recv_block.verify():
+        logging.error("Block %s rejected (failed verification)",
+                      util.bintos(recv_block.current_hash))
         return False
 
     r = util.get_db()
@@ -370,6 +380,8 @@ def new_recv_block(recv_block: Block, sender_id: Optional[int] = None, mute: boo
         if r.hexists("blockchain:blocks", recv_block.current_hash) or \
            r.sismember("blockchain:orphan_blocks:".encode() + recv_block.previous_hash,
                        recv_block.dumpb()):
+            logging.error("Block %s rejected (already exists)",
+                          util.bintos(recv_block.current_hash))
             return False
 
         # Handle the genesis block
@@ -383,6 +395,7 @@ def new_recv_block(recv_block: Block, sender_id: Optional[int] = None, mute: boo
             r.hset("blockchain:utxo-tx", ib, ob)
             r.sadd("blockchain:main_branch", recv_block.current_hash)
             _set_last_block_unlocked(r, recv_block)
+            logging.debug("Genesis block accepted")
             return True
 
         # OK 11 Check if prev block (matching prev hash) is in main branch or side branches. If not,
@@ -390,19 +403,23 @@ def new_recv_block(recv_block: Block, sender_id: Optional[int] = None, mute: boo
         #       block in prev chain; done with block
         prev_blockb = r.hget("blockchain:blocks", recv_block.previous_hash)
         if prev_blockb is None:
+            logging.error("Block %s is orphan", util.bintos(recv_block.current_hash))
             r.sadd("blockchain:orphan_blocks:".encode() + recv_block.previous_hash,
                    recv_block.dumpb())
             # TODO OPT: Unlock before requesting the block (it could take some time, although
             # the response is asynchronous of course
-            # TODO OPT: Only ask the node we got this from, not everyone to avoid the flood of
-            # incoming blocks later
             if not mute:
+                logging.debug("Requesting block %s", util.bintos(recv_block.previous_hash))
+                # TODO OPT: Only ask the node we got this from, not everyone, to
+                # avoid the flood of incoming blocks later
                 chatter.get_blockid(recv_block.previous_hash,
                                     [sender_id] if sender_id is not None else util.get_peer_ids())
             return False
 
         prev_block = Block.loadb(prev_blockb)
+        logging.debug("Previous block %s", util.bintos(prev_block.current_hash))
         if recv_block.index != prev_block.index + 1:
+            logging.error("Block %s rejected (wrong index)", util.bintos(recv_block.current_hash))
             return False
 
         # OK 15 Add block into the tree. There are three cases: 1. block further extends the main
@@ -412,6 +429,7 @@ def new_recv_block(recv_block: Block, sender_id: Optional[int] = None, mute: boo
         last_block = get_block()
         if recv_block.previous_hash == last_block.current_hash:
             # OK Case 1 (b.previous_hash == last_block):
+            logging.debug("Block %s the extends main branch", util.bintos(recv_block.current_hash))
             #"""
             txos = _validate_block_unlocked(r, recv_block)
             if txos is None:
@@ -510,15 +528,20 @@ def new_recv_block(recv_block: Block, sender_id: Optional[int] = None, mute: boo
             r.sadd("blockchain:main_branch", recv_block.current_hash)
 
             _set_last_block_unlocked(r, recv_block)
+            logging.debug("Block %s accepted", util.bintos(recv_block.current_hash))
         elif recv_block.index <= last_block.index:
             # OK Case 2 (b.previous_hash != last_block && b.index <= last_block.index)
             # : Add it without doing any validation because validating this now would require a lot
             # of work (actually simulating adding this to its prev as if extending the main branch).
+            logging.debug("Block %s the extends a side branch (not changing main)",
+                          util.bintos(recv_block.current_hash))
             r.hset("blockchain:blocks", recv_block.current_hash, recv_block.dumpb())
         else:
             # OK Case 3 (b.previous_hash != last_block && b.index > last_block.index)
             # OK 1  Find the fork block on the main branch which this side branch forks off of
             #       : Ascend the side branch, the fork block is the first to be in the main branch
+            logging.debug("Block %s the extends a side branch (changing main)",
+                          util.bintos(recv_block.current_hash))
             old_side_branch = [recv_block]    # the Blocks in the old side branch
             fork_block = Block.loadb(r.hget("blockchain:blocks", recv_block.previous_hash))
             while not r.sismember("blockchain:main_branch", fork_block.current_hash):
@@ -533,6 +556,7 @@ def new_recv_block(recv_block: Block, sender_id: Optional[int] = None, mute: boo
                 old_main_branch.append(b)
                 b = Block.loadb(r.hget("blockchain:blocks", b.previous_hash))
             old_main_branch.reverse()   # starting from the child of the fork block
+            logging.debug("Fork block %s", util.bintos(fork_block.current_hash))
             # OK 3  For each block on the side branch, from the child of the fork block to the leaf,
             #       add to the main branch:
             # referenced_txos for all blocks in the old side branch
@@ -674,6 +698,7 @@ def new_recv_block(recv_block: Block, sender_id: Optional[int] = None, mute: boo
                 r.sadd("blockchain:main_branch", b.current_hash)
 
             _set_last_block_unlocked(r, recv_block)
+            logging.debug("Block %s accepted", util.bintos(recv_block.current_hash))
 
         orphans = [Block.loadb(orphb) for orphb in \
                        r.smembers("blockchain:orphan_blocks:".encode() + recv_block.current_hash)]
