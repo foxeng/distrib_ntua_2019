@@ -52,6 +52,7 @@ from noobcash.chatter import chatter
 # after a while. There shouldn't be any problem in our scale.
 
 
+# TODO: Extend logging
 # TODO OPT: In terrible need of a refactor
 # TODO OPT: Define custom exceptions and use them
 # TODO OPT: Get rid of the locks. Look into redis transactions or Lua scripting
@@ -72,6 +73,11 @@ def initialize(nodes: int, node_id: int, capacity: int, difficulty: int) -> None
     r = util.get_db()
     r.flushdb()
 
+    logging.info("Initializing with %d nodes, node id %d, capacity %d, difficulty %d",
+                 nodes,
+                 node_id,
+                 capacity,
+                 difficulty)
     util.set_nodes(nodes)
     wallet.generate_wallet(node_id)
     if node_id == 0:
@@ -82,6 +88,7 @@ def initialize(nodes: int, node_id: int, capacity: int, difficulty: int) -> None
 
 def _generate_genesis() -> None:
     """Generate the genesis block and initialize the chain with it"""
+    logging.debug("Generating the genesis block")
     new_recv_block(Block.genesis())
 
 
@@ -90,24 +97,32 @@ def get_block(block_id: Optional[bytes] = None) -> Optional[Block]:
     This doesn't use any locks"""
     if block_id is not None and not isinstance(block_id, bytes):
         raise TypeError
+    if block_id is None:
+        logging.debug("Last block requested")
+    else:
+        logging.debug("Block %s requested", util.bintos(block_id))
 
     r = util.get_db()
     if block_id is None:
         block_id = r.get("blockchain:last_block")
         if block_id is None:
             # The blockchain is empty
+            logging.error("Blockchain is empty")
             return None
 
     blockb = r.hget("blockchain:blocks", block_id)
     if blockb is None:
         # Requested block not found
+        logging.error("Block %s not found", util.bintos(block_id))
         return None
 
+    logging.debug("Block %s retrieved", util.bintos(block_id))
     return Block.loadb(blockb)
 
 
 def get_balance(node_id: Optional[int] = None) -> float:
     """If node_id is None, return current node's balance"""
+    logging.debug("Balance requested for node %s", "local" if node_id is None else str(node_id))
     keyb = wallet.get_public_key(node_id).dumpb()
     r = util.get_db()
     # NOTE: No need to lock
@@ -118,12 +133,14 @@ def get_balance(node_id: Optional[int] = None) -> float:
         out = TransactionOutput.loadb(outb)
         if out.recipient == keyb:
             balance += out.amount
+    logging.debug("Balance of node %s: %f", "local" if node_id is None else str(node_id), balance)
     return balance
 
 
 def dump(mute: bool = False) -> List[Block]:
     """Broadcast every block in the main branch (if mute is False). Also return
     a list with these blocks (regardless of mute)."""
+    logging.debug("Dump requested")
     chain: List[Block] = []
     # NOTE: No need to lock the blocks because once a block is validated, it is
     # never deleted and all the blocks in the main branch are validated
@@ -134,9 +151,11 @@ def dump(mute: bool = False) -> List[Block]:
     chain.reverse()
 
     if not mute:
+        logging.debug("Broadcasting blocks")
         for b in chain:
             chatter.broadcast_block(b, util.get_peer_ids())
 
+    logging.debug("%d blocks in the chain", len(chain))
     return chain
 
 
