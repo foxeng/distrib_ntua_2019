@@ -43,16 +43,16 @@ if sys.argv[1] == 't':
         "dst": int(sys.argv[2]),
         "amount": int(sys.argv[3])
     }
-    r = requests.get("https://localhost:5000/transaction", json=payload)
+    r = requests.get("http://localhost:" + sys.argv[4] + "/transaction", json=payload)
     err_print(r.status_code)
 
 elif sys.argv[1] == 'view':
-    r =  requests.get("https://localhost:5000/history")
+    r =  requests.get("http://localhost:" + sys.argv[2] + "/history")
     err_print(r.status_code)
     print_block(r.json()["block"])
 
 elif sys.argv[1] == 'balance':
-    r =  requests.get("https://localhost:5000/balance")
+    r =  requests.get("http://localhost:" + sys.argv[2] + "/balance")
     err_print(r.status_code)
     print("balance:",r.json()["balance"])
 
@@ -66,7 +66,7 @@ elif sys.argv[1] == '-r':
                 "dst": int(fields[0]),
                 "amount": int(fields[1])
             }
-            r = requests.get("https://localhost:5000/transaction", json=payload)
+            r = requests.get("http://localhost:" + sys.argv[3] + "/transaction", json=payload)
             err_print(r.status_code)
 
 elif sys.argv[1] == 'help':
