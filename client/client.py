@@ -1,5 +1,7 @@
 import sys
 import requests
+from ast import literal_eval
+
 
 def print_transaction_inputs(data):
     print("\t\tinputs:")
@@ -49,7 +51,7 @@ if sys.argv[1] == 't':
 elif sys.argv[1] == 'view':
     r =  requests.get("http://localhost:" + sys.argv[2] + "/history")
     err_print(r.status_code)
-    print_block(r.json()["block"])
+    print_block(literal_eval(r.json()["block"]))
 
 elif sys.argv[1] == 'balance':
     r =  requests.get("http://localhost:" + sys.argv[2] + "/balance")
