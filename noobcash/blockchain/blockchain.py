@@ -52,7 +52,7 @@ from noobcash.chatter import chatter
 # after a while. There shouldn't be any problem in our scale.
 
 
-# TODO: Extend logging
+# TODO: Allow connecting to different redis dbs depending on the configuration
 # TODO OPT: In terrible need of a refactor
 # TODO OPT: Define custom exceptions and use them
 # TODO OPT: Get rid of the locks. Look into redis transactions or Lua scripting
@@ -163,6 +163,7 @@ def generate_transaction(recipient_id: int, amount: float, mute: bool = False) -
     """If possible (there are enough UTXOs) generate a new transaction giving
     amount NBC to recipient and the change back to us. If mute is True don't
     broadcast it."""
+    logging.debug("Transaction requested: %f NBC to node %d", amount, recipient_id)
     sender = wallet.get_public_key().dumpb()
     recipient = wallet.get_public_key(recipient_id).dumpb()
     r = util.get_db()
@@ -189,10 +190,13 @@ def generate_transaction(recipient_id: int, amount: float, mute: bool = False) -
                     break
         else:
             # Not enough UTXOs
+            logging.error("Cannot send %f NBC to node %d (not enough coins)", amount, recipient_id)
             return False
 
+    logging.debug("Generated transaction %s", util.bintos(t.id))
     _check_for_new_block()
     if not mute:
+        logging.debug("Broadcasting transaction %s", util.bintos(t.id))
         chatter.broadcast_transaction(t, util.get_peer_ids())
     return True
 
@@ -202,20 +206,17 @@ def _check_for_new_block() -> None:
     block (ie transactions in the pool with all their inputs in
     UTXO-block[last_block]. If so, start mining a new block.
     Should be called with no locks held."""
+    logging.debug("Checking for new block")
     CAPACITY = block.get_capacity()
 
     r = util.get_db()
-    # NOTE: If a miner is running, we expect it to add a new block, so we
-    # abort. If it succeeds, this function will be called again by
-    # new_recv_block(). If it fails (another valid block is received) this
-    # will again be called by new_rev_block()
-
     with r.lock("blockchain:last_block:lock"), \
          r.lock("blockchain:miner_pid:lock"), \
          r.lock("blockchain:tx_pool:lock"), \
          r.lock("blockchain:utxo-block:lock"):
         tx_pool = {Transaction.loadb(tb) for tb in r.hvals("blockchain:tx_pool")}
         if len(tx_pool) < CAPACITY:
+            logging.debug("Cannot create new block (not enough transactions)")
             return
 
         last_block = get_block()
@@ -241,9 +242,13 @@ def _check_for_new_block() -> None:
                         # abort. If mining succeeds, this function will be called again by
                         # new_recv_block(). If it fails (another valid block is received) this
                         # will again be called by new_rev_block()
-                        if r.get("blockchain:miner_pid") is None:
+                        miner_pidb = r.get("blockchain:miner_pid")
+                        if miner_pidb is None:
                             miner_pid = new_block.finalize()
-                            r.set("blockchain:miner_pid", miner_pid)
+                            r.set("blockchain:miner_pid", util.uitob(miner_pid))
+                            logging.debug("Miner started with PID %d", miner_pid)
+                        else:
+                            logging.debug("Miner already running with PID %d", util.btoui(miner_pidb))
                         return
             tx_pool.difference_update(new_block_tx)
 
@@ -251,18 +256,23 @@ def _check_for_new_block() -> None:
 def _set_last_block_unlocked(r, last_block: Block) -> None:
     """Should be called with the last_block lock held. Takes care of locking
     (and unlocking) the miner_pid lock"""
+    logging.debug("Setting last block to %s", util.bintos(last_block.current_hash))
     r.set("blockchain:last_block", last_block.current_hash)
 
     # Check if we were mining. If so, kill the miner
     with r.lock("blockchain:miner_pid:lock"):
         miner_pidb = r.get("blockchain:miner_pid")
         if miner_pidb is not None:
-            os.kill(int(miner_pidb), signal.SIGTERM)
+            miner_pid = util.btoui(miner_pidb)
+            os.kill(miner_pid, signal.SIGTERM)
             r.delete("blockchain:miner_pid")
+            logging.debug("Killed the miner with PID %d", miner_pid)
 
 
 def new_recv_transaction(t: Transaction) -> bool:
+    logging.debug("Received transaction %s", util.bintos(t.id))
     if not t.verify():
+        logging.error("Transaction %s rejected (failed verification)", util.bintos(t.id))
         return False
 
     r = util.get_db()
@@ -274,6 +284,7 @@ def new_recv_transaction(t: Transaction) -> bool:
         # done against UTXO-transaction
         prev_outb = r.hmget("blockchain:utxo-tx", *referenced_txos)
         if any(i is None for i in prev_outb):
+            logging.error("Transaction %s rejected (UTXO not found)", util.bintos(t.id))
             return False
         prev_outputs = [TransactionOutput.loadb(outb) for outb in prev_outb]
 
@@ -281,10 +292,13 @@ def new_recv_transaction(t: Transaction) -> bool:
         input_amount = sum(i.amount for i in prev_outputs)
         output_amount = sum(o.amount for o in t.outputs)
         if input_amount != output_amount:
+            logging.error("Transaction %s rejected (input amount != output amount)",
+                          util.bintos(t.id))
             return False
 
         # OK 16 Verify the scriptPubKey accepts for each input; reject if any are bad
         if any(o.recipient != t.sender for o in prev_outputs):
+            logging.error("Transaction %s rejected (spending another's UTXO)", util.bintos(t.id))
             return False
 
         # OK 17 Add to transaction pool[7]
@@ -296,12 +310,14 @@ def new_recv_transaction(t: Transaction) -> bool:
         new_utxos = {TransactionInput(t.id, o.index).dumpb(): o.dumpb() for o in t.outputs}
         r.hmset("blockchain:utxo-tx", new_utxos)
 
+    logging.debug("Transaction %s accepted", util.bintos(t.id))
     _check_for_new_block()
     return True
 
 
 def _validate_block_unlocked(r, b: Block) -> Optional[Tuple[Set[bytes], Dict[bytes, bytes]]]:
     """Should be called with the utxo-block lock held"""
+    # TODO: Logging
     referenced_txos: Set[bytes] = set()  # the utxos from UTXO-block spent in block
     new_utxos: Dict[bytes, bytes] = {}
     for t in b.transactions:
@@ -337,6 +353,7 @@ def _validate_block_unlocked(r, b: Block) -> Optional[Tuple[Set[bytes], Dict[byt
 
 
 def new_recv_block(recv_block: Block, sender_id: Optional[int] = None, mute: bool = False) -> bool:
+    # TODO: Logging
     if not recv_block.verify():
         return False
 
