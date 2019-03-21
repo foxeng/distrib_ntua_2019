@@ -140,8 +140,8 @@ def lstFinalise():
 
             def thread3Fn():
                 sleep(0.5)
-                for i in range(0, blockchainApi.getTotalNodes()):
-                    blockchainApi.generateTransaction(i, 100.0, True)
+                for i in range(1, blockchainApi.getTotalNodes()):
+                    blockchainApi.generateTransaction(i, 100.0)
                 return
             thread1 = Thread(target=threadFn)
             thread1.start()
