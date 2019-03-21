@@ -64,7 +64,7 @@ def lstNewBlock():
         blockchainApi.newReceivedBlock(blockData)
         return "<h1> Response to be implemented </h1>"
     elif request.method == 'GET':
-        blockId = request.get_json()["blockId"]
+        blockId = request.get_json()["block"]
         blockStr = blockchainApi.getBlock(blockId)
         response = Response(json.dumps({"block" : blockStr}), status=200, mimetype="application/json")
         return response
@@ -115,7 +115,7 @@ def lstFinalise():
         pubKeyStr = request.get_json()["pubKey"]
         tempKey = tempKey.loads(pubKeyStr)
         wallet.set_public_key(nodeId, tempKey)
-        blockchainApi.generateTransaction(nodeId, 100.0, True)
+        #blockchainApi.generateTransaction(nodeId, 100.0, True)
         if blockchainApi.getNodeCounter() == blockchainApi.getTotalNodes() - 1:
             def threadFn():
                 sleep(0.1) #wait a bit to make sure that the listener is started
@@ -138,11 +138,17 @@ def lstFinalise():
                 print("Blockchain Sent")
                 return
 
+            def thread3Fn():
+                sleep(0.5)
+                for i in range(0, blockchainApi.getTotalNodes()):
+                    blockchainApi.generateTransaction(i, 100.0, True)
+                return
             thread1 = Thread(target=threadFn)
             thread1.start()
             thread2 = Thread(target=thread2Fn)
             thread2.start()
-            
+            thread3 = Thread(target=thread3Fn)
+            thread3.start()
         return ("<h1> PubKey from {} Noted</h1>".format(nodeId))
     else:
         routingTable = request.get_json()["routingTable"]

@@ -8,8 +8,8 @@ def newReceivedTransaction(transJson):
 
 
 def newCreatedTransaction(dst, value):
-    trans = transaction.Transaction(dst.encode('utf-8'), value, None)
-    blockchain.new_recv_transaction(trans)
+    #trans = transaction.Transaction(dst.encode('utf-8'), value, None)
+    blockchain.generate_transaction(int(dst), (float)(value));
     # print("newCreatedTransaction Called with dst: {} & value {}:".format(dst, value))
 
 
