@@ -44,9 +44,10 @@ def welcome():
     return("<h1> We are rolling </h1>")
 
 #listener = Flask(__name__)
-@app.route("/transaction", methods=['POST'])
+@app.route("/transaction", methods=['GET', 'POST'])
 def lstTransaction():
-    if request.remote_addr == LOCALHOST:
+    #if request.remote_addr == LOCALHOST:
+    if request.method == 'GET':
         dst = (request.get_json()["dst"])
         value = float(request.get_json()["amount"])
         blockchainApi.newCreatedTransaction(dst, value)
