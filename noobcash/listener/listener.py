@@ -115,7 +115,7 @@ def lstFinalise():
         pubKeyStr = request.get_json()["pubKey"]
         tempKey = tempKey.loads(pubKeyStr)
         wallet.set_public_key(nodeId, tempKey)
-        blockchainApi.generateTransaction(nodeId, 100.0)
+        blockchainApi.generateTransaction(nodeId, 100.0, True)
         if blockchainApi.getNodeCounter() == blockchainApi.getTotalNodes() - 1:
             def threadFn():
                 sleep(0.1) #wait a bit to make sure that the listener is started

@@ -13,8 +13,8 @@ def newCreatedTransaction(dst, value):
     # print("newCreatedTransaction Called with dst: {} & value {}:".format(dst, value))
 
 
-def generateTransaction(node_id, value):
-    blockchain.generate_transaction(node_id, value)                
+def generateTransaction(node_id, value, flag=False):
+    blockchain.generate_transaction(node_id, value, flag)                
 
 
 def newReceivedBlock(blockString):
