@@ -1,4 +1,5 @@
 from typing import Set, Dict, List, Optional, Tuple
+import logging
 import os
 import signal
 from noobcash.blockchain import wallet, block, util
@@ -40,9 +41,9 @@ from noobcash.chatter import chatter
 #       key: blockchain:utxo-tx
 #       value: map [input: TransactionInput] -> [TransactionOutput]
 #       locking: yes
+
 # NOTE: Locks should always be acquired in the order specified above (it's
 # alphabetical) to avoid deadlocks
-
 # NOTE: We don't store orphan transactions (we reject them instead). They are
 # not strictly necessary: a transaction is orphan if it reaches us before one it
 # depends on. If at least one node receives the two in the right order, they
@@ -62,6 +63,10 @@ def initialize(nodes: int, node_id: int, capacity: int, difficulty: int) -> None
     # TODO OPT: Somehow check if initialization has already happened? But how to
     # separate initialization between different runs of the application?
     # TODO OPT: Need to do anything else?
+    logging.basicConfig(filename="blockchain.log",  # which directory?
+                        filemode="w",               # or prefer to append?
+                        format="",
+                        )
     r = util.get_db()
     r.flushdb()
 
@@ -441,7 +446,7 @@ def new_recv_block(recv_block: Block, sender_id: Optional[int] = None, mute: boo
                 new_conflicting_tx = {t for t in tx_pool if \
                         any(i.transaction_id in new_conflicting_tx_ids for i in t.inputs)}
             if conflicting_tx:
-                r.hdel("blockchain:tx_pool", *conflicting_tx)
+                r.hdel("blockchain:tx_pool", *(ct.id for ct in conflicting_tx))
 
             # TODO OPT: This can be factored out to rebuild_utxo_tx()
             # Rebuild UTXO-tx: re-initialize it as a copy of UTXO-block[recv_block] and simulate
@@ -603,7 +608,7 @@ def new_recv_block(recv_block: Block, sender_id: Optional[int] = None, mute: boo
                 new_conflicting_tx = {t for t in tx_pool if \
                         any(i.transaction_id in new_conflicting_tx_ids for i in t.inputs)}
             if conflicting_tx:
-                r.hdel("blockchain:tx_pool", *conflicting_tx)
+                r.hdel("blockchain:tx_pool", *(ct.id for ct in conflicting_tx))
 
             # TODO OPT: This can be factored out to rebuild_utxo_tx()
             # Rebuild UTXO-tx: reinitialize it as a copy of UTXO-block[recv_block] and simulate
