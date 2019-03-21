@@ -4,6 +4,7 @@ import json
 import functools
 from base64 import b64encode, b64decode
 import redis
+from instance import config
 
 
 # Storage
@@ -63,8 +64,8 @@ def bintos(b: bytes) -> str:
     return b64encode(b).decode()
 
 
-def get_db(db=0):   # TODO OPT: annotate this (what's the return value of redis.Redis()?)
-    return redis.Redis(db=db)
+def get_db():   # TODO OPT: annotate this (what's the return value of redis.Redis()?)
+    return redis.Redis(db=config.DB)
 
 
 def get_node_id() -> int:
