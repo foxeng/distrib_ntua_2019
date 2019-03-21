@@ -8,14 +8,14 @@ def print_transaction_inputs(data):
     for dict_item in data:
         print("\n\t\t\ttransaction_input")
         for key in dict_item:
-            print("\t\t\t{}: {},".format(key,dict_item[key]))
+            print("\t\t\t{}: {},".format(key,str(dict_item[key])[:100]))
 
 def print_transaction_outputs(data):
     print("\t\toutputs:")
     for dict_item in data:
         print("\n\t\t\ttransaction_output")
         for key in dict_item:
-            print("\t\t\t{}: {},".format(key,dict_item[key]))
+            print("\t\t\t{}: {},".format(key,str(dict_item[key])[:100]))
 
 def print_block(data):
     print("Last validated Block:")
@@ -31,7 +31,7 @@ def print_block(data):
             elif key == 'outputs':
                 print_transaction_outputs(dict_item[key])
             else:
-                print("\t\t{}: {},".format(key,dict_item[key]))
+                print("\t\t{}: {},".format(key,str(dict_item[key])[:100]))
     print("\tnonce: {},".format(data["nonce"]))
     print("\tcurrent_hash: {},".format(data["current_hash"]))
 
