@@ -52,10 +52,7 @@ elif sys.argv[1] == 'view':
     print_block(r.json()["block"])
 
 elif sys.argv[1] == 'balance':
-    payload = {
-        "walletId": "321312" # random value
-    }
-    r =  requests.get("https://localhost:5000/balance", json=payload)
+    r =  requests.get("https://localhost:5000/balance")
     err_print(r.status_code)
     print("balance:",r.json()["balance"])
 
