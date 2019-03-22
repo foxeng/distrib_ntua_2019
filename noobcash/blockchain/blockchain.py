@@ -552,6 +552,7 @@ def new_recv_block(recv_block: Block, sender_id: Optional[int] = None, mute: boo
             # TODO OPT: This can be factored out to rebuild_utxo_tx()
             # Rebuild UTXO-tx: re-initialize it as a copy of UTXO-block[recv_block] and simulate
             # adding all tx still in the pool
+            tx_pool -= tx_to_remove
             r.delete("blockchain:utxo-tx")
             utxo_tx = {TransactionInput.loadb(i): TransactionOutput.loadb(o) for i, o \
                 in r.hgetall("blockchain:utxo-block:".encode() + recv_block.current_hash).items()}
@@ -748,7 +749,9 @@ def new_recv_block(recv_block: Block, sender_id: Optional[int] = None, mute: boo
                         tx_to_remove.add(t_)
                         if t != t_:
                             tx_to_rec_rem.add(t_)
-            new_found = True
+            logging.debug(str(tx_to_remove))
+            logging.debug(str(tx_to_rec_rem))
+            new_found = bool(tx_to_rec_rem)
             while new_found:
                 new_found = False
                 for t in tx_pool:
@@ -762,6 +765,7 @@ def new_recv_block(recv_block: Block, sender_id: Optional[int] = None, mute: boo
             # TODO OPT: This can be factored out to rebuild_utxo_tx()
             # Rebuild UTXO-tx: reinitialize it as a copy of UTXO-block[recv_block] and simulate
             # adding all tx still in the pool
+            tx_pool -= tx_to_remove
             r.delete("blockchain:utxo-tx")
             utxo_tx = {TransactionInput.loadb(i): TransactionOutput.loadb(o) for i, o \
                 in r.hgetall("blockchain:utxo-block:".encode() + recv_block.current_hash).items()}
