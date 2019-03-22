@@ -1,0 +1,9 @@
+from os import environ
+IS_NODE_0 = True
+NODE_0_IP_ADDRESS = "192.168.1.11"
+NODE_0_PORT = environ.get("FLASK_RUN_PORT")
+DB = 0
+CAPACITY = 3
+DIFFICULTY = 4
+NUMBER_OF_NODES = 5
+
