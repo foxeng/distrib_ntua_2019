@@ -534,6 +534,8 @@ def new_recv_block(recv_block: Block, sender_id: Optional[int] = None, mute: boo
                         tx_to_remove.add(t_)
                         if t != t_:
                             tx_to_rec_rem.add(t_)
+            logging.debug(str(tx_to_remove))
+            logging.debug(str(tx_to_rec_rem))
             new_found = bool(tx_to_rec_rem)
             while new_found:
                 new_found = False
@@ -544,6 +546,8 @@ def new_recv_block(recv_block: Block, sender_id: Optional[int] = None, mute: boo
             tx_to_remove |= tx_to_rec_rem
             if tx_to_remove:
                 r.hdel("blockchain:tx_pool", *(t_.id for t_ in tx_to_remove))
+            
+            logging.debug("Rebuilt transaction pool")
 
             # TODO OPT: This can be factored out to rebuild_utxo_tx()
             # Rebuild UTXO-tx: re-initialize it as a copy of UTXO-block[recv_block] and simulate
