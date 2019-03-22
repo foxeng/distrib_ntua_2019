@@ -521,7 +521,7 @@ def new_recv_block(recv_block: Block, sender_id: Optional[int] = None, mute: boo
                                                  recv_block.current_hash, i.dumpb()):
                                 # The referenced txo is not in the UTXOs.
                                 # Remove t from the pool
-                                tx_to_remove.append(t_)
+                                tx_to_remove.append(t)
             if tx_to_remove:
                 r.hdel("blockchain:tx_pool", *(t_.id for t_ in tx_to_remove))
 
@@ -711,7 +711,7 @@ def new_recv_block(recv_block: Block, sender_id: Optional[int] = None, mute: boo
                                                  recv_block.current_hash, i.dumpb()):
                                 # The referenced txo is not in the UTXOs.
                                 # Remove t from the pool
-                                tx_to_remove.append(t_)
+                                tx_to_remove.append(t)
             if tx_to_remove:
                 r.hdel("blockchain:tx_pool", *(t_.id for t_ in tx_to_remove))
 
