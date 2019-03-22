@@ -19,8 +19,8 @@ def _initialization():
     if (config.IS_NODE_0) == True:
 
         print("I am Node 0")
-        util.set_nodes(config.NUMBER_OF_NODES)
-        blockchain.initialize(config.NUMBER_OF_NODES, config.NODE_ID, config.CAPACITY, config.DIFFICULTY)
+        print(config.NUMBER_OF_NODES)
+        blockchain.initialize(config.NUMBER_OF_NODES, 0, config.CAPACITY, config.DIFFICULTY)
         #util.set_node_id(0)
         #wallet.generate_wallet(0)
         #blockchain.generate_genesis()
@@ -117,6 +117,7 @@ def lstFinalise():
         tempKey = tempKey.loads(pubKeyStr)
         wallet.set_public_key(nodeId, tempKey)
         #blockchainApi.generateTransaction(nodeId, 100.0, True)
+        print(blockchainApi.getTotalNodes())
         if blockchainApi.getNodeCounter() == blockchainApi.getTotalNodes() - 1:
             def threadFn():
                 sleep(0.1) #wait a bit to make sure that the listener is started
@@ -129,6 +130,7 @@ def lstFinalise():
                 for i in range(1, blockchainApi.getTotalNodes()):
                     ipEntry = blockchainApi.getIp(i)
                     url = "http://" + ipEntry["ipAddr"] + ":" + str(ipEntry["port"] + "/finalisation")
+                    print("Sending to {} the routyiing Table {}".format(i, routingTable))
                     r = requests.post(url, json= {"routingTable" : routingTable})  
                 return
 
@@ -144,6 +146,7 @@ def lstFinalise():
                 for i in range(1, blockchainApi.getTotalNodes()):
                     blockchainApi.generateTransaction(i, 100.0)
                 return
+            
             thread1 = Thread(target=threadFn)
             thread1.start()
             thread2 = Thread(target=thread2Fn)
