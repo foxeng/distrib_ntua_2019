@@ -504,6 +504,7 @@ def new_recv_block(recv_block: Block, sender_id: Optional[int] = None, mute: boo
             if conflicting_tx:
                 r.hdel("blockchain:tx_pool", *(ct.id for ct in conflicting_tx))
             """
+            """
             tx_to_remove: List[Transaction] = []
             for t in tx_pool:
                 tx_to_follow = [t]
@@ -522,6 +523,25 @@ def new_recv_block(recv_block: Block, sender_id: Optional[int] = None, mute: boo
                                 # The referenced txo is not in the UTXOs.
                                 # Remove t from the pool
                                 tx_to_remove.append(t)
+            if tx_to_remove:
+                r.hdel("blockchain:tx_pool", *(t_.id for t_ in tx_to_remove))
+            """
+            tx_to_remove = set()
+            tx_to_rec_rem = set()
+            for t in recv_block.transactions:
+                for t_ in tx_pool:
+                    if any(it == it_ for it_ in t_.inputs for it in t.inputs):
+                        tx_to_remove.add(t_)
+                        if t != t_:
+                            tx_to_rec_rem.add(t_)
+            new_found = True
+            while new_found:
+                new_found = False
+                for t in tx_pool:
+                    if any(it in tx_to_rec_rem for it in t.inputs):
+                        tx_to_rec_rem.add(t)
+                        new_found = True
+            tx_to_remove |= tx_to_rec_rem
             if tx_to_remove:
                 r.hdel("blockchain:tx_pool", *(t_.id for t_ in tx_to_remove))
 
@@ -694,6 +714,7 @@ def new_recv_block(recv_block: Block, sender_id: Optional[int] = None, mute: boo
             if conflicting_tx:
                 r.hdel("blockchain:tx_pool", *(ct.id for ct in conflicting_tx))
             """
+            """
             tx_to_remove: List[Transaction] = []
             for t in tx_pool:
                 tx_to_follow = [t]
@@ -712,6 +733,25 @@ def new_recv_block(recv_block: Block, sender_id: Optional[int] = None, mute: boo
                                 # The referenced txo is not in the UTXOs.
                                 # Remove t from the pool
                                 tx_to_remove.append(t)
+            if tx_to_remove:
+                r.hdel("blockchain:tx_pool", *(t_.id for t_ in tx_to_remove))
+            """
+            tx_to_remove = set()
+            tx_to_rec_rem = set()
+            for t in recv_block.transactions:
+                for t_ in tx_pool:
+                    if any(it == it_ for it_ in t_.inputs for it in t.inputs):
+                        tx_to_remove.add(t_)
+                        if t != t_:
+                            tx_to_rec_rem.add(t_)
+            new_found = True
+            while new_found:
+                new_found = False
+                for t in tx_pool:
+                    if any(it in tx_to_rec_rem for it in t.inputs):
+                        tx_to_rec_rem.add(t)
+                        new_found = True
+            tx_to_remove |= tx_to_rec_rem
             if tx_to_remove:
                 r.hdel("blockchain:tx_pool", *(t_.id for t_ in tx_to_remove))
 
