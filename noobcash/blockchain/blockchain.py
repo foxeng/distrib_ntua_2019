@@ -52,7 +52,6 @@ from noobcash.chatter import chatter
 # after a while. There shouldn't be any problem in our scale.
 
 
-# TODO: Allow connecting to different redis dbs depending on the configuration
 # TODO OPT: In terrible need of a refactor
 # TODO OPT: Define custom exceptions and use them
 # TODO OPT: Get rid of the locks. Look into redis transactions or Lua scripting
@@ -429,7 +428,7 @@ def new_recv_block(recv_block: Block, sender_id: Optional[int] = None, mute: boo
         last_block = get_block()
         if recv_block.previous_hash == last_block.current_hash:
             # OK Case 1 (b.previous_hash == last_block):
-            logging.debug("Block %s the extends main branch", util.bintos(recv_block.current_hash))
+            logging.debug("Block %s extends main branch", util.bintos(recv_block.current_hash))
             #"""
             txos = _validate_block_unlocked(r, recv_block)
             if txos is None:
@@ -492,6 +491,7 @@ def new_recv_block(recv_block: Block, sender_id: Optional[int] = None, mute: boo
             #       and their children, recursively
             tx_pool = {Transaction.loadb(tb) for tb in r.hvals("blockchain:tx_pool")}
             # TODO OPT: This can be factored out to rebuild_tx_pool()
+            """
             conflicting_tx: Set[Transaction] = set()
             new_conflicting_tx = {t for t in tx_pool if \
                     any(i.dumpb() in referenced_txos for i in t.inputs)}
@@ -503,6 +503,27 @@ def new_recv_block(recv_block: Block, sender_id: Optional[int] = None, mute: boo
                         any(i.transaction_id in new_conflicting_tx_ids for i in t.inputs)}
             if conflicting_tx:
                 r.hdel("blockchain:tx_pool", *(ct.id for ct in conflicting_tx))
+            """
+            tx_to_remove: List[Transaction] = []
+            for t in tx_pool:
+                tx_to_follow = [t]
+                while tx_to_follow:
+                    tx = tx_to_follow.pop(0)
+                    for i in tx.inputs:
+                        for t_ in tx_pool:
+                            if i.transaction_id == t_.id:
+                                # The referenced transaction is in the pool
+                                tx_to_follow.append(t_)
+                                break
+                        else:
+                            # The referenced transaction is not in the pool
+                            if not r.hexists("blockchain:utxo-block:".encode() + \
+                                                 recv_block.current_hash, i.dumpb()):
+                                # The referenced txo is not in the UTXOs.
+                                # Remove t from the pool
+                                tx_to_remove.append(t_)
+            if tx_to_remove:
+                r.hdel("blockchain:tx_pool", *(t_.id for t_ in tx_to_remove))
 
             # TODO OPT: This can be factored out to rebuild_utxo_tx()
             # Rebuild UTXO-tx: re-initialize it as a copy of UTXO-block[recv_block] and simulate
@@ -660,6 +681,7 @@ def new_recv_block(recv_block: Block, sender_id: Optional[int] = None, mute: boo
             #       : delete all tx in the pool that have common inputs with the tx in the blocks in
             #       the old side branch and their children, recursively
             # TODO OPT: This can be factored out to rebuild_tx_pool()
+            """
             conflicting_tx: Set[Transaction] = set()
             new_conflicting_tx = {t for t in tx_pool if \
                     any(i.dumpb() in osb_referenced_txos for i in t.inputs)}
@@ -671,6 +693,27 @@ def new_recv_block(recv_block: Block, sender_id: Optional[int] = None, mute: boo
                         any(i.transaction_id in new_conflicting_tx_ids for i in t.inputs)}
             if conflicting_tx:
                 r.hdel("blockchain:tx_pool", *(ct.id for ct in conflicting_tx))
+            """
+            tx_to_remove: List[Transaction] = []
+            for t in tx_pool:
+                tx_to_follow = [t]
+                while tx_to_follow:
+                    tx = tx_to_follow.pop(0)
+                    for i in tx.inputs:
+                        for t_ in tx_pool:
+                            if i.transaction_id == t_.id:
+                                # The referenced transaction is in the pool
+                                tx_to_follow.append(t_)
+                                break
+                        else:
+                            # The referenced transaction is not in the pool
+                            if not r.hexists("blockchain:utxo-block:".encode() + \
+                                                 recv_block.current_hash, i.dumpb()):
+                                # The referenced txo is not in the UTXOs.
+                                # Remove t from the pool
+                                tx_to_remove.append(t_)
+            if tx_to_remove:
+                r.hdel("blockchain:tx_pool", *(t_.id for t_ in tx_to_remove))
 
             # TODO OPT: This can be factored out to rebuild_utxo_tx()
             # Rebuild UTXO-tx: reinitialize it as a copy of UTXO-block[recv_block] and simulate
