@@ -534,7 +534,7 @@ def new_recv_block(recv_block: Block, sender_id: Optional[int] = None, mute: boo
                         tx_to_remove.add(t_)
                         if t != t_:
                             tx_to_rec_rem.add(t_)
-            new_found = True
+            new_found = bool(tx_to_rec_rem)
             while new_found:
                 new_found = False
                 for t in tx_pool:
