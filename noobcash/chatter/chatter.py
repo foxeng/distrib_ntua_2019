@@ -17,19 +17,19 @@ def send_get_request(node_id, payload, arg):
 def broadcast_transaction(trans_data, node_ids):
     payload = {"transData" : trans_data.dumps()}
     p = ThreadPool(len(node_ids))
-    results = p.starmap(send_post_request,
-                        zip(node_ids, itertools.repeat(payload), itertools.repeat("transaction")))
+    p.starmap_async(send_post_request,
+                    zip(node_ids, itertools.repeat(payload), itertools.repeat("transaction")))
 
 
 def broadcast_block(block_data, node_ids):
     payload = {"blockData" : block_data.dumps()}
     p = ThreadPool(len(node_ids))
-    results = p.starmap(send_post_request,
-                        zip(node_ids, itertools.repeat(payload), itertools.repeat("block")))
+    p.starmap_async(send_post_request,
+                    zip(node_ids, itertools.repeat(payload), itertools.repeat("block")))
 
 
 def get_blockid(blockId, node_ids):
     payload = {"block" : bintos(blockId) }
     p = ThreadPool(len(node_ids))
-    results = p.starmap(send_get_request,
-                        zip(node_ids, itertools.repeat(payload), itertools.repeat("block")))
+    p.starmap_async(send_get_request,
+                    zip(node_ids, itertools.repeat(payload), itertools.repeat("block")))

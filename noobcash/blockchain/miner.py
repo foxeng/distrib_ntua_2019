@@ -39,7 +39,7 @@ if __name__ == "__main__":
                 print(b.dumps())
             else:
                 # TODO OPT: Call new_recv_block(b) instead of sending the block
-                # ot ourself? Is it enough?
+                # to ourself? Is it enough?
                 chatter.broadcast_block(b, list(range(util.get_nodes())))
 
             break
