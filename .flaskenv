@@ -1,3 +1,2 @@
-FLASK_APP=noobcash
-FLASK_DEBUG=1
-FLASK_RUN_PORT="4000"
+FLASK_APP=noobcash.listener.listener
+FLASK_RUN_PORT="5000"

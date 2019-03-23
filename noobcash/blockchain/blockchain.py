@@ -1,5 +1,6 @@
-from typing import Set, Dict, List, Optional, Tuple
+from typing import Set, Dict, List, Optional, Mapping, Tuple
 import logging
+import time
 import os
 import signal
 from noobcash.blockchain import wallet, block, util
@@ -52,9 +53,13 @@ from noobcash.chatter import chatter
 # after a while. There shouldn't be any problem in our scale.
 
 
-# TODO OPT: In terrible need of a refactor
+# TODO OPT: In need of a big refactor
+# TODO OPT: Wrap calls to redis. Having redis keys as strings all over the place
+# is looking for trouble (especially since redis won't complain for a
+# non-existent key with most of the commands)
+# TODO OPT: Optimize (eg start with minimizing the calls to redis)
 # TODO OPT: Define custom exceptions and use them
-# TODO OPT: Get rid of the locks. Look into redis transactions or Lua scripting
+# TODO OPT: Get rid of the locks. Look into redis transactions or redis EVAL
 
 
 def initialize(nodes: int, node_id: int, capacity: int, difficulty: int) -> None:
@@ -72,11 +77,11 @@ def initialize(nodes: int, node_id: int, capacity: int, difficulty: int) -> None
     r = util.get_db()
     r.flushdb()
 
-    logging.info("Initializing with %d nodes, node id %d, capacity %d, difficulty %d",
-                 nodes,
-                 node_id,
-                 capacity,
-                 difficulty)
+    logging.debug("Initializing with %d nodes, node id %d, capacity %d, difficulty %d",
+                  nodes,
+                  node_id,
+                  capacity,
+                  difficulty)
     util.set_nodes(nodes)
     wallet.generate_wallet(node_id)
     if node_id == 0:
@@ -106,13 +111,13 @@ def get_block(block_id: Optional[bytes] = None) -> Optional[Block]:
         block_id = r.get("blockchain:last_block")
         if block_id is None:
             # The blockchain is empty
-            logging.error("Blockchain is empty")
+            logging.debug("Blockchain is empty")
             return None
 
     blockb = r.hget("blockchain:blocks", block_id)
     if blockb is None:
         # Requested block not found
-        logging.error("Block %s not found", util.bintos(block_id))
+        logging.debug("Block %s not found", util.bintos(block_id))
         return None
 
     logging.debug("Block %s retrieved", util.bintos(block_id))
@@ -213,13 +218,23 @@ def _check_for_new_block() -> None:
          r.lock("blockchain:miner_pid:lock"), \
          r.lock("blockchain:tx_pool:lock"), \
          r.lock("blockchain:utxo-block:lock"):
+        # NOTE: If a miner is running, we expect it to add a new block, so we
+        # abort. If mining succeeds, this function will be called again by
+        # new_recv_block(). If it fails (another valid block is received) this
+        # will again be called by new_recv_block()
+        miner_pidb = r.get("blockchain:miner_pid")
+        if miner_pidb is not None:
+            logging.debug("Miner already running with PID %d", util.btoui(miner_pidb))
+            return
+
         tx_pool = {Transaction.loadb(tb) for tb in r.hvals("blockchain:tx_pool")}
         if len(tx_pool) < CAPACITY:
-            logging.debug("Cannot create new block (not enough transactions)")
+            logging.debug("Cannot create new block yet (not enough transactions)")
             return
 
         last_block = get_block()
-        utxo_block = "blockchain:utxo-block:".encode() + last_block.current_hash
+        utxo_block = {TransactionInput.loadb(i): TransactionOutput.loadb(o) for i, o \
+            in r.hgetall("blockchain:utxo-block:".encode() + last_block.current_hash).items()}
         new_block_tx: List[Transaction] = []
         # NOTE: Since there are >= CAPACITY transactions in the pool, and we
         # don't mind transaction inter-dependence in the same block, a new
@@ -227,7 +242,7 @@ def _check_for_new_block() -> None:
         while True:
             for t in tx_pool:
                 # Search for t.inputs in UTXO-block[last_block] as well as in new_block_tx
-                if all(r.hexists(utxo_block, i.dumpb()) or \
+                if all(i in utxo_block or \
                        any(nt.id == i.transaction_id for nt in new_block_tx) for i in t.inputs):
                     new_block_tx.append(t)
                     if len(new_block_tx) == CAPACITY:
@@ -237,18 +252,9 @@ def _check_for_new_block() -> None:
                         # NOTE: We don't delete the new block_tx from the pool, because
                         # mining might fail. They will be deleted eventually when they
                         # enter the main branch.
-                        # NOTE: If a miner is running, we expect it to add a new block, so we
-                        # abort. If mining succeeds, this function will be called again by
-                        # new_recv_block(). If it fails (another valid block is received) this
-                        # will again be called by new_rev_block()
-                        miner_pidb = r.get("blockchain:miner_pid")
-                        if miner_pidb is None:
-                            miner_pid = new_block.finalize()
-                            r.set("blockchain:miner_pid", util.uitob(miner_pid))
-                            logging.debug("Miner started with PID %d", miner_pid)
-                        else:
-                            logging.debug("Miner already running with PID %d",
-                                          util.btoui(miner_pidb))
+                        miner_pid = new_block.finalize()
+                        r.set("blockchain:miner_pid", util.uitob(miner_pid))
+                        logging.debug("Miner started with PID %d", miner_pid)
                         return
             tx_pool.difference_update(new_block_tx)
 
@@ -272,7 +278,7 @@ def _set_last_block_unlocked(r, last_block: Block) -> None:
 def new_recv_transaction(t: Transaction) -> bool:
     logging.debug("Received transaction %s", util.bintos(t.id))
     if not t.verify():
-        logging.error("Transaction %s rejected (failed verification)", util.bintos(t.id))
+        logging.debug("Transaction %s rejected (failed verification)", util.bintos(t.id))
         return False
 
     r = util.get_db()
@@ -284,7 +290,7 @@ def new_recv_transaction(t: Transaction) -> bool:
         # done against UTXO-transaction
         prev_outb = r.hmget("blockchain:utxo-tx", *referenced_txos)
         if any(i is None for i in prev_outb):
-            logging.error("Transaction %s rejected (UTXO not found)", util.bintos(t.id))
+            logging.debug("Transaction %s rejected (UTXO not found)", util.bintos(t.id))
             return False
         prev_outputs = [TransactionOutput.loadb(outb) for outb in prev_outb]
 
@@ -292,13 +298,13 @@ def new_recv_transaction(t: Transaction) -> bool:
         input_amount = sum(i.amount for i in prev_outputs)
         output_amount = sum(o.amount for o in t.outputs)
         if input_amount != output_amount:
-            logging.error("Transaction %s rejected (input amount != output amount)",
+            logging.debug("Transaction %s rejected (input amount != output amount)",
                           util.bintos(t.id))
             return False
 
         # OK 16 Verify the scriptPubKey accepts for each input; reject if any are bad
         if any(o.recipient != t.sender for o in prev_outputs):
-            logging.error("Transaction %s rejected (spending another's UTXO)", util.bintos(t.id))
+            logging.debug("Transaction %s rejected (spending another's UTXO)", util.bintos(t.id))
             return False
 
         # OK 17 Add to transaction pool[7]
@@ -317,7 +323,6 @@ def new_recv_transaction(t: Transaction) -> bool:
 
 def _validate_block_unlocked(r, b: Block) -> Optional[Tuple[Set[bytes], Dict[bytes, bytes]]]:
     """Should be called with the utxo-block lock held"""
-    # TODO: Logging
     referenced_txos: Set[bytes] = set()  # the utxos from UTXO-block spent in block
     new_utxos: Dict[bytes, bytes] = {}
     for t in b.transactions:
@@ -330,26 +335,26 @@ def _validate_block_unlocked(r, b: Block) -> Optional[Tuple[Set[bytes], Dict[byt
                 # Not found in UTXO-block, search in new_utxos
                 ob = new_utxos.get(ib)
                 if ob is None:
-                    logging.error("Block %s rejected (UTXO not found)", util.bintos(b.current_hash))
+                    logging.debug("Block %s rejected (UTXO not found)", util.bintos(b.current_hash))
                     return None
                 del new_utxos[ib]
             else:
                 # Avoid double-spending of a utxo from UTXO-block in the block
                 if ib in referenced_txos:
-                    logging.error("Block %s rejected (double spending in the block)",
+                    logging.debug("Block %s rejected (double spending in the block)",
                                   util.bintos(b.current_hash))
                     return None
                 referenced_txos.add(ib)
             o = TransactionOutput.loadb(ob)
 
             if o.recipient != t.sender:
-                logging.error("Block %s rejected (spending another's UTXO)",
+                logging.debug("Block %s rejected (spending another's UTXO)",
                               util.bintos(b.current_hash))
                 return None
             input_amount += o.amount
 
         if input_amount != sum(o.amount for o in t.outputs):
-            logging.error("Block %s rejected (input amount != output amount)",
+            logging.debug("Block %s rejected (input amount != output amount)",
                           util.bintos(b.current_hash))
             return None
 
@@ -359,10 +364,80 @@ def _validate_block_unlocked(r, b: Block) -> Optional[Tuple[Set[bytes], Dict[byt
     return (referenced_txos, new_utxos)
 
 
+def _create_utxo_block_unlocked(r,
+                                curr_block: Block,
+                                referenced_txos: Set[bytes],
+                                new_utxos: Mapping[bytes, bytes]) -> None:
+    """Create utxo-block for block b as a copy of utxo-block of its previous
+    block, with referenced_txos removed and new_utxos added. Should be called
+    with the utxo-block lock held. referenced_txos and new_utxos should not be
+    empty."""
+    utxo_prev_block = r.dump("blockchain:utxo-block:".encode() + curr_block.previous_hash)
+    r.restore(name="blockchain:utxo-block:".encode() + curr_block.current_hash,
+              ttl=0,
+              value=utxo_prev_block,
+              replace=True)
+    r.hdel("blockchain:utxo-block:".encode() + curr_block.current_hash, *referenced_txos)
+    r.hmset("blockchain:utxo-block:".encode() + curr_block.current_hash, new_utxos)
+
+
+def _rebuild_tx_pool_unlocked(r,
+                              tx_pool: Mapping[bytes, Transaction],
+                              b: Block) -> Dict[bytes, Transaction]:
+    """Rebuild the tx_pool (ie keep only the valid transactions)
+    using utxo-block of b to check for transaction validity. Return
+    the updated transaction pool. Should be called with the
+    utxo-block and tx_pool locks held."""
+    utxo_block = {TransactionInput.loadb(i): TransactionOutput.loadb(o) for i, o \
+        in r.hgetall("blockchain:utxo-block:".encode() + b.current_hash).items()}
+    def is_unspent(txin: TransactionInput) -> bool:
+        if txin in utxo_block:
+            return True
+        prev_tx = tx_pool.get(txin.transaction_id)
+        if prev_tx is None:
+            return False
+        return all(is_unspent(i) for i in prev_tx.inputs)
+
+    tx_to_remove: Set[Transaction] = set()
+    for t in tx_pool.values():
+        # A transaction is valid only if all its inputs are either in UTXO-block
+        # or are outputs of other valid transactions in the pool
+        if not all(is_unspent(i) for i in t.inputs):
+            tx_to_remove.add(t)
+    tx_pool = {tid: t for tid, t in tx_pool.items() if t not in tx_to_remove}
+    if tx_to_remove:
+        r.hdel("blockchain:tx_pool", *(t.id for t in tx_to_remove))
+
+    return tx_pool
+
+
+def _rebuild_utxo_tx_unlocked(r, b: Block, tx_pool: Mapping[bytes, Transaction]) -> None:
+    """Reinitialize UTXO-tx as a copy of UTXO-block[b] and simulate adding all
+    transactions in tx_pool. Should be called with the utxo-block and the
+    utxo-tx locks held."""
+    r.delete("blockchain:utxo-tx")
+    utxo_tx = {TransactionInput.loadb(i): TransactionOutput.loadb(o) for i, o \
+        in r.hgetall("blockchain:utxo-block:".encode() + b.current_hash).items()}
+    while tx_pool:
+        tx_to_remove: Set[Transaction] = set()
+        for t in tx_pool.values():
+            if all(i in utxo_tx for i in t.inputs):
+                for i in t.inputs:
+                    del utxo_tx[i]
+                for o in t.outputs:
+                    utxo_tx[TransactionInput(t.id, o.index)] = o
+                tx_to_remove.add(t)
+        tx_pool = {tid: t for tid, t in tx_pool.items() if t not in tx_to_remove}
+    # NOTE: utxo_tx is not empty because UTXO-block[recv_block] is not empty
+    r.hmset("blockchain:utxo-tx", {i.dumpb(): o.dumpb() for i, o in utxo_tx.items()})
+
+
 def new_recv_block(recv_block: Block, sender_id: Optional[int] = None, mute: bool = False) -> bool:
+    """Handle a received block. Based on the bitcoin protocol rules for block
+    handling at https://en.bitcoin.it/wiki/Protocol_rules."""
     logging.debug("Received block %s", util.bintos(recv_block.current_hash))
     if not recv_block.verify():
-        logging.error("Block %s rejected (failed verification)",
+        logging.debug("Block %s rejected (failed verification)",
                       util.bintos(recv_block.current_hash))
         return False
 
@@ -375,11 +450,13 @@ def new_recv_block(recv_block: Block, sender_id: Optional[int] = None, mute: boo
          r.lock("blockchain:utxo-block:lock"), \
          r.lock("blockchain:utxo-tx:lock"):
 
+        # NOTE: Comments like the one below are references to the bitcoin
+        # protocol rules
         # OK 2  Reject if duplicate of block we have in any of the three categories
         if r.hexists("blockchain:blocks", recv_block.current_hash) or \
            r.sismember("blockchain:orphan_blocks:".encode() + recv_block.previous_hash,
                        recv_block.dumpb()):
-            logging.error("Block %s rejected (already exists)",
+            logging.debug("Block %s rejected (already exists)",
                           util.bintos(recv_block.current_hash))
             return False
 
@@ -402,7 +479,7 @@ def new_recv_block(recv_block: Block, sender_id: Optional[int] = None, mute: boo
         #       block in prev chain; done with block
         prev_blockb = r.hget("blockchain:blocks", recv_block.previous_hash)
         if prev_blockb is None:
-            logging.error("Block %s is orphan", util.bintos(recv_block.current_hash))
+            logging.debug("Block %s is orphan", util.bintos(recv_block.current_hash))
             r.sadd("blockchain:orphan_blocks:".encode() + recv_block.previous_hash,
                    recv_block.dumpb())
             # TODO OPT: Unlock before requesting the block (it could take some time, although
@@ -418,7 +495,7 @@ def new_recv_block(recv_block: Block, sender_id: Optional[int] = None, mute: boo
         prev_block = Block.loadb(prev_blockb)
         logging.debug("Previous block %s", util.bintos(prev_block.current_hash))
         if recv_block.index != prev_block.index + 1:
-            logging.error("Block %s rejected (wrong index)", util.bintos(recv_block.current_hash))
+            logging.debug("Block %s rejected (wrong index)", util.bintos(recv_block.current_hash))
             return False
 
         # OK 15 Add block into the tree. There are three cases: 1. block further extends the main
@@ -428,14 +505,13 @@ def new_recv_block(recv_block: Block, sender_id: Optional[int] = None, mute: boo
         last_block = get_block()
         if recv_block.previous_hash == last_block.current_hash:
             # OK Case 1 (b.previous_hash == last_block):
-            logging.debug("Block %s extends main branch", util.bintos(recv_block.current_hash))
-            #"""
+            logging.debug("Block %s extends the main branch", util.bintos(recv_block.current_hash))
             txos = _validate_block_unlocked(r, recv_block)
             if txos is None:
                 return False
             referenced_txos, new_utxos = txos
-            #"""
             """
+            # NOTE: This is the body of _validate_block_unlocked, annotated, for reference
             referenced_txos: Set[bytes] = set()  # the utxos from UTXO-block spent in recv_block
             new_utxos: Dict[bytes, bytes] = {}
             # OK 1  For all but the coinbase transaction, apply the following:
@@ -476,94 +552,18 @@ def new_recv_block(recv_block: Block, sender_id: Optional[int] = None, mute: boo
             """
 
             # OK 4  For each transaction, "Add to wallet if mine"
-            # TODO OPT: This can be factored out to set_utxo_block()
-            utxo_prev_block = r.dump("blockchain:utxo-block:".encode() + recv_block.previous_hash)
-            r.restore(name="blockchain:utxo-block:".encode() + recv_block.current_hash,
-                      ttl=0,
-                      value=utxo_prev_block,
-                      replace=True)
             # NOTE: referenced_txos and new_utxos are not empty since we got here
-            r.hdel("blockchain:utxo-block:".encode() + recv_block.current_hash, *referenced_txos)
-            r.hmset("blockchain:utxo-block:".encode() + recv_block.current_hash, new_utxos)
+            _create_utxo_block_unlocked(r, recv_block, referenced_txos, new_utxos)
 
             # OK 5  For each transaction in the block, delete any matching transaction from the pool
-            #       : delete all tx in the pool that have common inputs with the tx in the block,
-            #       and their children, recursively
-            tx_pool = {Transaction.loadb(tb) for tb in r.hvals("blockchain:tx_pool")}
-            # TODO OPT: This can be factored out to rebuild_tx_pool()
-            """
-            conflicting_tx: Set[Transaction] = set()
-            new_conflicting_tx = {t for t in tx_pool if \
-                    any(i.dumpb() in referenced_txos for i in t.inputs)}
-            while new_conflicting_tx:
-                conflicting_tx |= new_conflicting_tx
-                tx_pool -= new_conflicting_tx
-                new_conflicting_tx_ids = {t.id for t in new_conflicting_tx}
-                new_conflicting_tx = {t for t in tx_pool if \
-                        any(i.transaction_id in new_conflicting_tx_ids for i in t.inputs)}
-            if conflicting_tx:
-                r.hdel("blockchain:tx_pool", *(ct.id for ct in conflicting_tx))
-            """
-            """
-            tx_to_remove: List[Transaction] = []
-            for t in tx_pool:
-                tx_to_follow = [t]
-                while tx_to_follow:
-                    tx = tx_to_follow.pop(0)
-                    for i in tx.inputs:
-                        for t_ in tx_pool:
-                            if i.transaction_id == t_.id:
-                                # The referenced transaction is in the pool
-                                tx_to_follow.append(t_)
-                                break
-                        else:
-                            # The referenced transaction is not in the pool
-                            if not r.hexists("blockchain:utxo-block:".encode() + \
-                                                 recv_block.current_hash, i.dumpb()):
-                                # The referenced txo is not in the UTXOs.
-                                # Remove t from the pool
-                                tx_to_remove.append(t)
-            if tx_to_remove:
-                r.hdel("blockchain:tx_pool", *(t_.id for t_ in tx_to_remove))
-            """
-            tx_to_remove = set()
-            tx_to_rec_rem = set()
-            for t in recv_block.transactions:
-                for t_ in tx_pool:
-                    if any(it == it_ for it_ in t_.inputs for it in t.inputs):
-                        tx_to_remove.add(t_)
-                        if t != t_:
-                            tx_to_rec_rem.add(t_)
-            new_found = bool(tx_to_rec_rem)
-            while new_found:
-                new_found = False
-                for t in tx_pool:
-                    if any(it in tx_to_rec_rem for it in t.inputs):
-                        tx_to_rec_rem.add(t)
-                        new_found = True
-            tx_to_remove |= tx_to_rec_rem
-            if tx_to_remove:
-                r.hdel("blockchain:tx_pool", *(t_.id for t_ in tx_to_remove))
+            #       : of the transactions in the pool, keep only the ones that are valid using the
+            #       new utxo-block to check for validity
+            tx_pool = {t.id: t for t in \
+                          [Transaction.loadb(tb) for tb in r.hvals("blockchain:tx_pool")]}
+            # NOTE: There can't be double spending in the tx pool as it is now
+            tx_pool = _rebuild_tx_pool_unlocked(r, tx_pool, recv_block)
 
-            # TODO OPT: This can be factored out to rebuild_utxo_tx()
-            # Rebuild UTXO-tx: re-initialize it as a copy of UTXO-block[recv_block] and simulate
-            # adding all tx still in the pool
-            tx_pool -= tx_to_remove
-            r.delete("blockchain:utxo-tx")
-            utxo_tx = {TransactionInput.loadb(i): TransactionOutput.loadb(o) for i, o \
-                in r.hgetall("blockchain:utxo-block:".encode() + recv_block.current_hash).items()}
-            while tx_pool:
-                tx_to_remove: Set[Transaction] = set()
-                for t in tx_pool:
-                    if all(i in utxo_tx for i in t.inputs):
-                        for i in t.inputs:
-                            del utxo_tx[i]
-                        for o in t.outputs:
-                            utxo_tx[TransactionInput(t.id, o.index)] = o
-                        tx_to_remove.add(t)
-                tx_pool -= tx_to_remove
-            # NOTE: utxo_tx is not empty because UTXO-block[recv_block] is not empty
-            r.hmset("blockchain:utxo-tx", {i.dumpb(): o.dumpb() for i, o in utxo_tx.items()})
+            _rebuild_utxo_tx_unlocked(r, recv_block, tx_pool)
 
             # Add block to main branch
             r.hset("blockchain:blocks", recv_block.current_hash, recv_block.dumpb())
@@ -575,14 +575,14 @@ def new_recv_block(recv_block: Block, sender_id: Optional[int] = None, mute: boo
             # OK Case 2 (b.previous_hash != last_block && b.index <= last_block.index)
             # : Add it without doing any validation because validating this now would require a lot
             # of work (actually simulating adding this to its prev as if extending the main branch).
-            logging.debug("Block %s the extends a side branch (not changing main)",
+            logging.debug("Block %s extends a side branch (not changing main)",
                           util.bintos(recv_block.current_hash))
             r.hset("blockchain:blocks", recv_block.current_hash, recv_block.dumpb())
         else:
             # OK Case 3 (b.previous_hash != last_block && b.index > last_block.index)
             # OK 1  Find the fork block on the main branch which this side branch forks off of
             #       : Ascend the side branch, the fork block is the first to be in the main branch
-            logging.debug("Block %s the extends a side branch (changing main)",
+            logging.debug("Block %s extends a side branch (changing main)",
                           util.bintos(recv_block.current_hash))
             old_side_branch = [recv_block]    # the Blocks in the old side branch
             fork_block = Block.loadb(r.hget("blockchain:blocks", recv_block.previous_hash))
@@ -601,13 +601,10 @@ def new_recv_block(recv_block: Block, sender_id: Optional[int] = None, mute: boo
             logging.debug("Fork block %s", util.bintos(fork_block.current_hash))
             # OK 3  For each block on the side branch, from the child of the fork block to the leaf,
             #       add to the main branch:
-            # referenced_txos for all blocks in the old side branch
-            osb_referenced_txos: Set[bytes] = set()
             for osbi, b in enumerate(old_side_branch):
                 # OK 1  Do "branch" checks 3-11
                 #       : Why? we did them when first receiving the block. What could have changed?
                 # OK 2  For all the transactions:
-                #"""
                 txos = _validate_block_unlocked(r, b)
                 if txos is None:
                     # Delete invalid blocks and abort
@@ -615,8 +612,8 @@ def new_recv_block(recv_block: Block, sender_id: Optional[int] = None, mute: boo
                     r.hdel("blockchain:blocks", *invalid_ids)
                     return False
                 referenced_txos, new_utxos = txos
-                #"""
                 """
+                # NOTE: This is the body of _validate_block_unlocked, annotated, for reference
                 referenced_txos: Set[bytes] = set()  # the utxos from UTXO-block spent in b
                 new_utxos: Dict[bytes, bytes] = {}
                 for t in b.transactions:
@@ -662,27 +659,14 @@ def new_recv_block(recv_block: Block, sender_id: Optional[int] = None, mute: boo
                             in t.outputs})
                 """
 
-                # NOTE: This actually adds more than we need, but it's harmless. We only need the
-                # UTXOs from the fork block and up which are spent in the old side branch, but this
-                # also adds UTXOs from the old side branch itself
-                osb_referenced_txos |= referenced_txos
-
                 # OK 5  For each transaction, "Add to wallet if mine"
-                #       : Update UTXO-block[current_hash]: delete inputs and add outputs from the tx
-                #       in the block
-                # TODO OPT: This can be factored out to set_utxo_block()
-                utxo_prev_block = r.dump("blockchain:utxo-block:".encode() + b.previous_hash)
-                r.restore(name="blockchain:utxo-block:".encode() + b.current_hash,
-                          ttl=0,
-                          value=utxo_prev_block,
-                          replace=True)
                 # NOTE: referenced_txos and new_utxos are not empty since we got here
-                r.hdel("blockchain:utxo-block:".encode() + b.current_hash, *referenced_txos)
-                r.hmset("blockchain:utxo-block:".encode() + b.current_hash, new_utxos)
+                _create_utxo_block_unlocked(r, b, referenced_txos, new_utxos)
 
             # OK 5  For each block in the old main branch, from the leaf down to the child of the
             #       fork block:
-            tx_pool = {Transaction.loadb(tb) for tb in r.hvals("blockchain:tx_pool")}
+            tx_pool = {t.id: t for t in \
+                          [Transaction.loadb(tb) for tb in r.hvals("blockchain:tx_pool")]}
             for b in reversed(old_main_branch):
                 # OK 1  For each non-coinbase transaction in the block:
                 for t in b.transactions:
@@ -693,88 +677,21 @@ def new_recv_block(recv_block: Block, sender_id: Optional[int] = None, mute: boo
                     #       main branch) + the old main branch, because they wouldn't have gotten
                     #       there in the first place.
                     # OK 2  Add to transaction pool if accepted, else go on to next transaction
-                    tx_pool.add(t)
+                    tx_pool[t.id] = t
 
             # OK 6  For each block in the new main branch, from the child of the fork node to the
             #       leaf:
                 # OK 1  For each transaction in the block, delete any matching transaction from the
                 #       transaction pool
-            #       : delete all tx in the pool that have common inputs with the tx in the blocks in
-            #       the old side branch and their children, recursively
-            # TODO OPT: This can be factored out to rebuild_tx_pool()
-            """
-            conflicting_tx: Set[Transaction] = set()
-            new_conflicting_tx = {t for t in tx_pool if \
-                    any(i.dumpb() in osb_referenced_txos for i in t.inputs)}
-            while new_conflicting_tx:
-                conflicting_tx |= new_conflicting_tx
-                tx_pool -= new_conflicting_tx
-                new_conflicting_tx_ids = {t.id for t in new_conflicting_tx}
-                new_conflicting_tx = {t for t in tx_pool if \
-                        any(i.transaction_id in new_conflicting_tx_ids for i in t.inputs)}
-            if conflicting_tx:
-                r.hdel("blockchain:tx_pool", *(ct.id for ct in conflicting_tx))
-            """
-            """
-            tx_to_remove: List[Transaction] = []
-            for t in tx_pool:
-                tx_to_follow = [t]
-                while tx_to_follow:
-                    tx = tx_to_follow.pop(0)
-                    for i in tx.inputs:
-                        for t_ in tx_pool:
-                            if i.transaction_id == t_.id:
-                                # The referenced transaction is in the pool
-                                tx_to_follow.append(t_)
-                                break
-                        else:
-                            # The referenced transaction is not in the pool
-                            if not r.hexists("blockchain:utxo-block:".encode() + \
-                                                 recv_block.current_hash, i.dumpb()):
-                                # The referenced txo is not in the UTXOs.
-                                # Remove t from the pool
-                                tx_to_remove.append(t)
-            if tx_to_remove:
-                r.hdel("blockchain:tx_pool", *(t_.id for t_ in tx_to_remove))
-            """
-            tx_to_remove = set()
-            tx_to_rec_rem = set()
-            for t in recv_block.transactions:
-                for t_ in tx_pool:
-                    if any(it == it_ for it_ in t_.inputs for it in t.inputs):
-                        tx_to_remove.add(t_)
-                        if t != t_:
-                            tx_to_rec_rem.add(t_)
-            new_found = bool(tx_to_rec_rem)
-            while new_found:
-                new_found = False
-                for t in tx_pool:
-                    if any(it in tx_to_rec_rem for it in t.inputs):
-                        tx_to_rec_rem.add(t)
-                        new_found = True
-            tx_to_remove |= tx_to_rec_rem
-            if tx_to_remove:
-                r.hdel("blockchain:tx_pool", *(t_.id for t_ in tx_to_remove))
+            #       : Of the transactions in the pool, keep only the ones that are valid using the
+            #       new utxo-block to check for validity
+            # NOTE: There can't be double spending in the tx pool as it is now,
+            # because it consists of the tx in the previous tx pool and all the
+            # tx in the old main branch, and all of these have already been
+            # checked for double spending
+            tx_pool = _rebuild_tx_pool_unlocked(r, tx_pool, recv_block)
 
-            # TODO OPT: This can be factored out to rebuild_utxo_tx()
-            # Rebuild UTXO-tx: reinitialize it as a copy of UTXO-block[recv_block] and simulate
-            # adding all tx still in the pool
-            tx_pool -= tx_to_remove
-            r.delete("blockchain:utxo-tx")
-            utxo_tx = {TransactionInput.loadb(i): TransactionOutput.loadb(o) for i, o \
-                in r.hgetall("blockchain:utxo-block:".encode() + recv_block.current_hash).items()}
-            while tx_pool:
-                tx_to_remove: Set[Transaction] = set()
-                for t in tx_pool:
-                    if all(i in utxo_tx for i in t.inputs):
-                        for i in t.inputs:
-                            del utxo_tx[i]
-                        for o in t.outputs:
-                            utxo_tx[TransactionInput(t.id, o.index)] = o
-                        tx_to_remove.add(t)
-                tx_pool -= tx_to_remove
-            # NOTE: utxo_tx is not empty because UTXO-block[recv_block] is not empty
-            r.hmset("blockchain:utxo-tx", {i.dumpb(): o.dumpb() for i, o in utxo_tx.items()})
+            _rebuild_utxo_tx_unlocked(r, recv_block, tx_pool)
 
             # Update main_branch
             for b in old_main_branch:
@@ -782,12 +699,15 @@ def new_recv_block(recv_block: Block, sender_id: Optional[int] = None, mute: boo
             for b in old_side_branch:
                 r.sadd("blockchain:main_branch", b.current_hash)
 
+            r.hset("blockchain:blocks", recv_block.current_hash, recv_block.dumpb())
             _set_last_block_unlocked(r, recv_block)
             logging.debug("Block %s accepted", util.bintos(recv_block.current_hash))
 
         orphans = [Block.loadb(orphb) for orphb in \
                        r.smembers("blockchain:orphan_blocks:".encode() + recv_block.current_hash)]
         r.delete("blockchain:orphan_blocks:".encode() + recv_block.current_hash)
+
+    logging.debug("Block acceptance time: %f", time.time() - recv_block.timestamp)
 
     # OK 19 For each orphan block for which this block is its prev, run all these steps (including
     #       this one) recursively on that orphan

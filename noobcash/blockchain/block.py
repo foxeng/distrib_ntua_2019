@@ -84,17 +84,23 @@ class Block:
 
         :returns: the pid of the spawned process
         """
+        def wait_miner(p, b):
+            import logging
+            outs, errs = p.communicate(input=b.dumps())
+            logging.debug("Miner %d stdout: %s", p.pid, outs)
+            logging.debug("Miner %d stderr: %s", p.pid, errs)
+
+        import threading
         python = sys.executable if sys.executable else 'python3'
         p = subprocess.Popen(args=[python,
                                    '-m',
                                    'noobcash.blockchain.miner',
                                    str(get_difficulty())],
                              stdin=subprocess.PIPE,
-                             stdout=subprocess.DEVNULL,
-                             stderr=subprocess.DEVNULL,
+                             stdout=subprocess.PIPE,
+                             stderr=subprocess.PIPE,
                              universal_newlines=True)
-        p.stdin.write(self.dumps())
-        p.stdin.close()
+        threading.Thread(target=wait_miner, args=(p, self)).start()
         return p.pid
 
     def _partial_hash(self):   # TODO OPT: Annotate this (what's the type of hashlib.sha256()?)
