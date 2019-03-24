@@ -33,10 +33,11 @@ loads = json.loads
 UI = struct.Struct("!I")
 D = struct.Struct("!d")
 
+# TODO OPT: Place the configuration values (max_connections, path) in the config file
 _connection_pool = redis.BlockingConnectionPool(max_connections=100,    # TODO OPT: 100? You sure?
                                                 timeout=None,
                                                 connection_class=redis.UnixDomainSocketConnection,
-                                                path="/run/redis/redis.sock",
+                                                path="/var/run/redis/redis.sock",
                                                 db=config.DB)
 
 
