@@ -3,7 +3,7 @@ import os
 import logging
 import time
 from noobcash.blockchain.block import Block
-from noobcash.blockchain import util, blockchain
+from noobcash.blockchain import util
 from noobcash.chatter import chatter
 
 
@@ -48,33 +48,23 @@ if __name__ == "__main__":
                           nonce, util.bintos(digest), time.time() - tstart)
             b.nonce = nonce
             b.current_hash = digest
-            r = util.get_db()
-            if not ECHO:
-                # Insert the block into our blockchain before clearing
-                # miner_pid, so that a new miner will build on this block
-                blockchain.new_recv_block(b, util.get_node_id())
-            # NOTE: At this point, new_recv_block() above might have launched a
-            # new miner, overwriting this one's pid. This is ok, we have already
-            # finished. So, we just need to be careful and only delete miner_pid
-            # if it still matches our PID
-            with r.lock("blockchain:miner_pid:lock"):
-                if util.btoui(r.get("blockchain:miner_pid")) == os.getpid():
-                    r.delete("blockchain:miner_pid")
-                    logging.debug("Miner %d cleared", os.getpid())
-                else:
-                    logging.debug("Miner %d: another miner already started ", os.getpid())
             if ECHO:
                 print(b.dumps())
             else:
                 logging.debug("Miner %d broadcasting", os.getpid())
+                # NOTE: Yes, we send the block back to our own node through the
+                # network stack. This is the dumbest, slowest, but also the most
+                # robust way for now
                 # NOTE: We do a blocking broadcast, because otherwise the
                 # process will just terminate before actually making the
-                # requests (the requests are still sent concurrently).
-                # NOTE: If this takes a long time, miner processes are likely
-                # to gather if we are saturated with new transactions, since
-                # at this point we have cleared miner_pid and a new miner is
-                # free to start
-                chatter.broadcast_block(b, util.get_peer_ids(), blocking=True)
+                # requests (the requests are still sent concurrently). Since
+                # the listener will respond without blocking, this shouldn't be
+                # too big of a problem
+                chatter.broadcast_block(b, list(range(util.get_nodes())), blocking=True)
+            r = util.get_db()
+            with r.lock("blockchain:miner_pid:lock"):
+                r.delete("blockchain:miner_pid")
+            logging.debug("Miner %d cleared", os.getpid())
 
             break
         else:
