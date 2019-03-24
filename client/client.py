@@ -63,6 +63,7 @@ elif sys.argv[1] == 'balance':
 elif sys.argv[1] == '-r':
     filename = sys.argv[2]
     with open(filename, 'r') as f:
+        i = 1
         for line in f:
             try:
                 delay = float(sys.argv[4])
@@ -77,6 +78,8 @@ elif sys.argv[1] == '-r':
             }
             r = requests.get("http://localhost:" + sys.argv[3] + "/transaction", json=payload)
             err_print(r.status_code)
+            print("{}, ".format(i), end="")
+            i += 1
 elif sys.argv[1] == 'help':
     print("t <recipient_address> <amount>: send to recipient_address the amount of NBC coins from the wallet of sender_address.\n")
     print("view: view last transactions of noobcash blockchain's last validated block.\n")
