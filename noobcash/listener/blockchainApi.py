@@ -9,18 +9,18 @@ def newReceivedTransaction(transJson):
 
 
 def newCreatedTransaction(dst, value):
-    blockchain.generate_transaction(int(dst), float(value))
+    return blockchain.generate_transaction(int(dst), float(value))
 
 
 def generateTransaction(node_id, value, flag=False):
     blockchain.generate_transaction(node_id, value, flag)
 
 
-def newReceivedBlock(blockString):
+def newReceivedBlock(blockString, senderId=None):
     # TODO OPT: Gracefully handle (ie do nothing, just catch it) any exception
     # thrown by loads()
-    block = blockchain.Block.loads(blockString)
-    blockchain.new_recv_block(block)
+    b = blockchain.Block.loads(blockString)
+    blockchain.new_recv_block(b, senderId)
 
 
 def getBlock(blockId=None):

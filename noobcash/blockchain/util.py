@@ -107,7 +107,7 @@ def get_registered_nodes() -> int:
     return incr_registered_nodes(0)
 
 
-def get_ip(node_id: int) -> typing.Mapping[str, str]:   # TODO OPT: This can support multiple IDs
+def get_ip(node_id: int) -> typing.Mapping[str, str]:   # TODO OPT: This could support multiple IDs
     r = get_db()
     return loads(r.hget("util:node_urls", node_id).decode())
 
