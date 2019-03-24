@@ -56,6 +56,8 @@ if __name__ == "__main__":
                 logging.debug("Miner %d broadcasting to 0-%d", os.getpid(), util.get_nodes())
                 # TODO OPT: Call new_recv_block(b) instead of sending the block
                 # to ourself? Is it enough?
+                # NOTE: We do a blockcing broadcast, because otherwise the process will just
+                # terminate before actually making the requests
                 chatter.broadcast_block(b, list(range(util.get_nodes())), blocking=True)
 
             break

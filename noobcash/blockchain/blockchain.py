@@ -173,8 +173,8 @@ def generate_transaction(recipient_id: int, amount: float, mute: bool = False) -
     r = util.get_db()
     inputs: List[TransactionInput] = []
     input_amount = 0.0
-    with r.lock("blockchain:utxo-tx:lock"), \
-         r.lock("blockchain:tx_pool:lock"):
+    with r.lock("blockchain:tx_pool:lock"), \
+         r.lock("blockchain:utxo-tx:lock"):
         for ib, ob in r.hgetall("blockchain:utxo-tx").items():
             o = TransactionOutput.loadb(ob)
             if o.recipient == sender:
