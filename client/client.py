@@ -78,7 +78,7 @@ elif sys.argv[1] == '-r':
             }
             r = requests.get("http://localhost:" + sys.argv[3] + "/transaction", json=payload)
             err_print(r.status_code)
-            print("{}, ".format(i), end="")
+            print("{}, ".format(i), end="", flush=True)
             i += 1
 elif sys.argv[1] == 'help':
     print("t <recipient_address> <amount>: send to recipient_address the amount of NBC coins from the wallet of sender_address.\n")
