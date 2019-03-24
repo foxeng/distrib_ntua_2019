@@ -52,7 +52,7 @@ if __name__ == "__main__":
             if not ECHO:
                 # Insert the block into our blockchain before clearing
                 # miner_pid, so that a new miner will built on this block
-                blockchain.new_recv_block(b)
+                blockchain.new_recv_block(b, util.get_node_id())
             # Clear miner_pid to allow for another miner to start. We delay
             # broadcasting the block because it is an expensive procedure and
             # it shouldn't block a new miner from starting

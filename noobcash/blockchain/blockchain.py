@@ -259,20 +259,23 @@ def _check_for_new_block() -> None:
             tx_pool.difference_update(new_block_tx)
 
 
-def _set_last_block_unlocked(r, last_block: Block) -> None:
-    """Should be called with the last_block lock held. Takes care of locking
-    (and unlocking) the miner_pid lock"""
+def _set_last_block_unlocked(r, last_block: Block, check: bool) -> None:
+    """Should be called with the last_block lock held. If check=True, checks for
+    a running miner and, if found, kills it. In this case only, it acquires the
+    miner_pid lock, so this shouldn't be called with check=True and the
+    miner_pid lock held."""
     logging.debug("Setting last block to %s", util.bintos(last_block.current_hash))
     r.set("blockchain:last_block", last_block.current_hash)
 
-    # Check if we were mining. If so, kill the miner
-    with r.lock("blockchain:miner_pid:lock"):
-        miner_pidb = r.get("blockchain:miner_pid")
-        if miner_pidb is not None:
-            miner_pid = util.btoui(miner_pidb)
-            os.kill(miner_pid, signal.SIGTERM)
-            r.delete("blockchain:miner_pid")
-            logging.debug("Killed the miner with PID %d", miner_pid)
+    if check:
+        # Check if we were mining. If so, kill the miner
+        with r.lock("blockchain:miner_pid:lock"):
+            miner_pidb = r.get("blockchain:miner_pid")
+            if miner_pidb is not None:
+                miner_pid = util.btoui(miner_pidb)
+                os.kill(miner_pid, signal.SIGTERM)
+                r.delete("blockchain:miner_pid")
+                logging.debug("Killed the miner with PID %d", miner_pid)
 
 
 def new_recv_transaction(t: Transaction) -> bool:
@@ -434,7 +437,9 @@ def _rebuild_utxo_tx_unlocked(r, b: Block, tx_pool: Mapping[bytes, Transaction])
 
 def new_recv_block(recv_block: Block, sender_id: Optional[int] = None, mute: bool = False) -> bool:
     """Handle a received block. Based on the bitcoin protocol rules for block
-    handling at https://en.bitcoin.it/wiki/Protocol_rules."""
+    handling at https://en.bitcoin.it/wiki/Protocol_rules. Should be called
+    with NO locks held (except if sender_id is our node's id, in which case we
+    expect to have been called by the miner, which holds the miner_pid lock)."""
     logging.debug("Received block %s", util.bintos(recv_block.current_hash))
     if not recv_block.verify():
         logging.debug("Block %s rejected (failed verification)",
@@ -470,7 +475,10 @@ def new_recv_block(recv_block: Block, sender_id: Optional[int] = None, mute: boo
             r.hset("blockchain:utxo-block:".encode() + recv_block.current_hash, ib, ob)
             r.hset("blockchain:utxo-tx", ib, ob)
             r.sadd("blockchain:main_branch", recv_block.current_hash)
-            _set_last_block_unlocked(r, recv_block)
+            # NOTE: If recv_block was sent from a local miner, the miner is
+            # holding the miner_pid lock and we don't want to kill it of
+            # course, so check should be False if sender_id is our node's id
+            _set_last_block_unlocked(r, recv_block, check=sender_id != util.get_node_id())
             logging.debug("Genesis block accepted")
             return True
 
@@ -569,7 +577,10 @@ def new_recv_block(recv_block: Block, sender_id: Optional[int] = None, mute: boo
             r.hset("blockchain:blocks", recv_block.current_hash, recv_block.dumpb())
             r.sadd("blockchain:main_branch", recv_block.current_hash)
 
-            _set_last_block_unlocked(r, recv_block)
+            # NOTE: If recv_block was sent from a local miner, the miner is
+            # holding the miner_pid lock and we don't want to kill it of
+            # course, so check should be False if sender_id is our node's id
+            _set_last_block_unlocked(r, recv_block, check=sender_id != util.get_node_id())
             logging.debug("Block %s accepted", util.bintos(recv_block.current_hash))
         elif recv_block.index <= last_block.index:
             # OK Case 2 (b.previous_hash != last_block && b.index <= last_block.index)
@@ -700,7 +711,10 @@ def new_recv_block(recv_block: Block, sender_id: Optional[int] = None, mute: boo
                 r.sadd("blockchain:main_branch", b.current_hash)
 
             r.hset("blockchain:blocks", recv_block.current_hash, recv_block.dumpb())
-            _set_last_block_unlocked(r, recv_block)
+            # NOTE: If recv_block was sent from a local miner, the miner is
+            # holding the miner_pid lock and we don't want to kill it of
+            # course, so check should be False if sender_id is our node's id
+            _set_last_block_unlocked(r, recv_block, check=sender_id != util.get_node_id())
             logging.debug("Block %s accepted", util.bintos(recv_block.current_hash))
 
         orphans = [Block.loadb(orphb) for orphb in \
