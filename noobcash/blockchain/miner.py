@@ -51,14 +51,18 @@ if __name__ == "__main__":
             r = util.get_db()
             if not ECHO:
                 # Insert the block into our blockchain before clearing
-                # miner_pid, so that a new miner will built on this block
+                # miner_pid, so that a new miner will build on this block
                 blockchain.new_recv_block(b, util.get_node_id())
-            # Clear miner_pid to allow for another miner to start. We delay
-            # broadcasting the block because it is an expensive procedure and
-            # it shouldn't block a new miner from starting
+            # NOTE: At this point, new_recv_block() above might have launched a
+            # new miner, overwriting this one's pid. This is ok, we have already
+            # finished. So, we just need to be careful and only delete miner_pid
+            # if it still matches our PID
             with r.lock("blockchain:miner_pid:lock"):
-                r.delete("blockchain:miner_pid")
-            logging.debug("Miner %d cleared", os.getpid())
+                if util.btoui(r.get("blockchain:miner_pid")) == os.getpid():
+                    r.delete("blockchain:miner_pid")
+                    logging.debug("Miner %d cleared", os.getpid())
+                else:
+                    logging.debug("Miner %d: another miner already started ", os.getpid())
             if ECHO:
                 print(b.dumps())
             else:
