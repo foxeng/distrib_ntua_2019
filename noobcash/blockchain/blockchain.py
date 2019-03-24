@@ -200,7 +200,7 @@ def generate_transaction(recipient_id: int, amount: float, mute: bool = False) -
             return False
 
     logging.debug("Generated transaction %s", util.bintos(t.id))
-    _check_for_new_block()
+    _check_for_new_block(check_miner=True)
     if not mute:
         logging.debug("Broadcasting transaction %s", util.bintos(t.id))
         chatter.broadcast_transaction(t, util.get_peer_ids())
@@ -735,5 +735,5 @@ def new_recv_block(recv_block: Block, sender_id: Optional[int] = None, mute: boo
     for orphan in orphans:
         new_recv_block(orphan, sender_id)
 
-    _check_for_new_block()
+    _check_for_new_block(check_miner=sender_id != util.get_node_id())
     return True
