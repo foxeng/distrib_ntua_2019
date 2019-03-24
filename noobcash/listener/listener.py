@@ -137,13 +137,13 @@ def lstFinalise():
                     requests.post(url, json={"routingTable": routingTable})
 
             def thread2Fn():
-                sleep(0.3)
+                sleep(1)
                 print("Sending Blockchain")
                 blockchain.dump()
                 print("Blockchain Sent")
 
             def thread3Fn():
-                sleep(0.5)
+                sleep(2)
                 for i in range(1, blockchainApi.getTotalNodes()):
                     blockchainApi.generateTransaction(i, 100.0)
 
