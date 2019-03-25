@@ -33,6 +33,13 @@ loads = json.loads
 UI = struct.Struct("!I")
 D = struct.Struct("!d")
 
+# TODO OPT: Place the configuration values (max_connections, path) in the config file
+_connection_pool = redis.BlockingConnectionPool(max_connections=100,    # TODO OPT: 100? You sure?
+                                                timeout=None,
+                                                connection_class=redis.UnixDomainSocketConnection,
+                                                path="/var/run/redis/redis.sock",
+                                                db=config.DB)
+
 
 def uitob(i: int) -> bytes:
     """Unsigned int to bytes"""
@@ -65,7 +72,7 @@ def bintos(b: bytes) -> str:
 
 
 def get_db():   # TODO OPT: annotate this (what's the return value of redis.Redis()?)
-    return redis.Redis(db=config.DB)
+    return redis.Redis(connection_pool=_connection_pool)
 
 
 def get_node_id() -> int:
@@ -100,7 +107,7 @@ def get_registered_nodes() -> int:
     return incr_registered_nodes(0)
 
 
-def get_ip(node_id: int) -> typing.Mapping[str, str]:   # TODO OPT: This can support multiple IDs
+def get_ip(node_id: int) -> typing.Mapping[str, str]:   # TODO OPT: This could support multiple IDs
     r = get_db()
     return loads(r.hget("util:node_urls", node_id).decode())
 

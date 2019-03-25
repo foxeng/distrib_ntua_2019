@@ -12,7 +12,9 @@ from noobcash.chatter import chatter
 
 
 LOCALHOST = "127.0.0.1"
-app = Flask(__name__, instance_relative_config=True)    #, instance_path='../instance/')
+app = Flask(__name__, instance_relative_config=True)
+# TODO OPT: Configuration from config.py, silent=False and remove the 'from
+# instance import config' above
 
 
 @app.before_first_request
@@ -44,12 +46,14 @@ def lstTransaction():
         # Client requesting generation of a new transaction
         dst = request.get_json()["dst"]
         value = float(request.get_json()["amount"])
-        blockchainApi.newCreatedTransaction(dst, value)
-        return "<h1> Transaction Noted </h1> "
+        # Should block, the client can wait and we ought to give some feedback
+        res = blockchainApi.newCreatedTransaction(dst, value)
+        return "OK" if res else "Transaction could not be satisfied"
     else:
         # Transaction heard on the network
         transData = request.get_json()["transData"]
-        blockchainApi.newReceivedTransaction(transData)
+        # Shouldn't block
+        Thread(target=blockchainApi.newReceivedTransaction, args=(transData, )).start()
         return "<h1> Response to be implemented </h1>"
 
 
@@ -58,7 +62,12 @@ def lstNewBlock():
     if request.method == 'POST':
         # Block heard on the network
         blockData = request.get_json()["blockData"]
-        blockchainApi.newReceivedBlock(blockData)
+        # TODO OPT: Also provide the node id of the sender (not easy if >1
+        # servers running on the same host because then how do we identify
+        # which of them it was? (the port they make the requests from is
+        # arbitrary))
+        # Shouldn't block
+        Thread(target=blockchainApi.newReceivedBlock, args=(blockData, )).start()
         return "<h1> Response to be implemented </h1>"
     else:
         # Query for a block on our chain
@@ -73,7 +82,7 @@ def lstNewBlock():
 
         blockId = request.get_json()["block"]
         # Asynchronously send the block in a new request, not the response
-        Thread(target=sendBlockAsync, args=(blockId,)).start()
+        Thread(target=sendBlockAsync, args=(blockId, )).start()
         return "<h1> Response to be implemented </h1>"
 
 
@@ -137,13 +146,13 @@ def lstFinalise():
                     requests.post(url, json={"routingTable": routingTable})
 
             def thread2Fn():
-                sleep(0.3)
+                sleep(1)
                 print("Sending Blockchain")
                 blockchain.dump()
                 print("Blockchain Sent")
 
             def thread3Fn():
-                sleep(0.5)
+                sleep(2)
                 for i in range(1, blockchainApi.getTotalNodes()):
                     blockchainApi.generateTransaction(i, 100.0)
 

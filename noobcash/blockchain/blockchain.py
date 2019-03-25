@@ -53,6 +53,8 @@ from noobcash.chatter import chatter
 # after a while. There shouldn't be any problem in our scale.
 
 
+# TODO: Rule out the possibility of having >= CAPACITY transactions in the pool,
+# no miner running and not trying to mine them
 # TODO OPT: In need of a big refactor
 # TODO OPT: Wrap calls to redis. Having redis keys as strings all over the place
 # is looking for trouble (especially since redis won't complain for a
@@ -208,8 +210,8 @@ def generate_transaction(recipient_id: int, amount: float, mute: bool = False) -
 def _check_for_new_block() -> None:
     """Check if there are at least CAPACITY transactions that can go in a new
     block (ie transactions in the pool with all their inputs in
-    UTXO-block[last_block]. If so, start mining a new block.
-    Should be called with no locks held."""
+    UTXO-block[last_block]). If so and if a miner is not already running, start
+    mining for a new block. Should be called with NO locks held."""
     logging.debug("Checking for new block")
     CAPACITY = block.get_capacity()
 
@@ -260,8 +262,10 @@ def _check_for_new_block() -> None:
 
 
 def _set_last_block_unlocked(r, last_block: Block) -> None:
-    """Should be called with the last_block lock held. Takes care of locking
-    (and unlocking) the miner_pid lock"""
+    """Should be called with the last_block lock held. If check_miner=True,
+    checks for a running miner and, if found, kills it. In this case only, it
+    also acquires the miner_pid lock, so this shouldn't be called with
+    check_miner=True and the miner_pid lock held."""
     logging.debug("Setting last block to %s", util.bintos(last_block.current_hash))
     r.set("blockchain:last_block", last_block.current_hash)
 
@@ -434,7 +438,9 @@ def _rebuild_utxo_tx_unlocked(r, b: Block, tx_pool: Mapping[bytes, Transaction])
 
 def new_recv_block(recv_block: Block, sender_id: Optional[int] = None, mute: bool = False) -> bool:
     """Handle a received block. Based on the bitcoin protocol rules for block
-    handling at https://en.bitcoin.it/wiki/Protocol_rules."""
+    handling at https://en.bitcoin.it/wiki/Protocol_rules. Should be called
+    with NO locks held (except if sender_id is our node's id, in which case we
+    expect to have been called by the miner, which holds the miner_pid lock)."""
     logging.debug("Received block %s", util.bintos(recv_block.current_hash))
     if not recv_block.verify():
         logging.debug("Block %s rejected (failed verification)",
@@ -703,16 +709,17 @@ def new_recv_block(recv_block: Block, sender_id: Optional[int] = None, mute: boo
             _set_last_block_unlocked(r, recv_block)
             logging.debug("Block %s accepted", util.bintos(recv_block.current_hash))
 
-        orphans = [Block.loadb(orphb) for orphb in \
+        orphans = [Block.loadb(orphanb) for orphanb in \
                        r.smembers("blockchain:orphan_blocks:".encode() + recv_block.current_hash)]
         r.delete("blockchain:orphan_blocks:".encode() + recv_block.current_hash)
 
-    logging.debug("Block acceptance time: %f", time.time() - recv_block.timestamp)
+    logging.debug("Block time for %s %f", util.bintos(recv_block.current_hash),
+                      time.time() - recv_block.timestamp)
 
     # OK 19 For each orphan block for which this block is its prev, run all these steps (including
     #       this one) recursively on that orphan
     for orphan in orphans:
-        new_recv_block(orphan)
+        new_recv_block(orphan, sender_id)
 
     _check_for_new_block()
     return True
